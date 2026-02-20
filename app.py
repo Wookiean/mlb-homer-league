@@ -10,7 +10,7 @@ st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="
 def apply_baseball_theme():
     st.markdown("""
     <style>
-    /* Main background: Road Uniform Gray (much softer on the eyes) */
+    /* Main background: Road Uniform Gray */
     .stApp {
         background-color: #D3D5D7;
     }
@@ -146,7 +146,7 @@ with st.spinner("Crunching live MLB stats..."):
         all_team_data[m] = team_df
 
 # --- 5. TABS ---
-tab1, tab2, tab3 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders", "⏪ 2025 Rewind"])
 
 with tab1:
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum()} for m in managers]
@@ -177,7 +177,6 @@ with tab2:
         
         matchup_df = pd.merge(df1, df2, on='Position', how='outer').fillna('-')
         
-        # Display the custom Jumbotron metric
         st.markdown("<br>", unsafe_allow_html=True)
         score1 = all_team_data[m1]['HR'].sum()
         score2 = all_team_data[m2]['HR'].sum()
@@ -199,5 +198,32 @@ with tab3:
         st.dataframe(leaders_df, hide_index=True, use_container_width=True)
     else:
         st.warning("No data available for this position yet.")
+
+with tab4:
+    st.subheader("⏪ The 2025 Alternate Universe")
+    st.info("How would your current 2026 roster have performed last year? Click below to run the simulation based on official 2025 MLB Regular Season totals.")
+    
+    if st.button("Simulate 2025 Season"):
+        with st.spinner("Traveling back in time to fetch 2025 stats..."):
+            retro_team_data = {}
+            for m in managers:
+                team_df = roster_df[roster_df['Manager'] == m].copy()
+                team_df['2025 HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, "2025REG"))
+                retro_team_data[m] = team_df
+            
+            retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
+            retro_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
+            
+            st.markdown("### 🏆 2025 Simulated Standings")
+            st.dataframe(retro_df, use_container_width=True)
+            
+            st.divider()
+            st.markdown("### 📋 2025 Player Contributions")
+            cols = st.columns(len(managers))
+            for i, m in enumerate(managers):
+                with cols[i]:
+                    st.markdown(f"### {m}'s Team")
+                    display_df = retro_team_data[m][['Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
+                    st.dataframe(display_df, hide_index=True, use_container_width=True)
 
 st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")

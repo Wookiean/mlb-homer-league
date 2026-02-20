@@ -90,27 +90,33 @@ is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
 @st.cache_data(ttl=3600)
-def fetch_hr_count(player_name, year=2026, game_type="R"):
+def fetch_player_data(player_name, year=2026, game_type="R"):
     try:
         players = mlb.get_people_id(player_name)
-        if not players: return 0
+        if not players: return 0, None
         
-        # FIX: We must pass stats=['season'], not types=['season']
-        stats = mlb.get_player_stats(players[0], stats=['season'], groups=['hitting'], season=year, gameType=game_type)
+        player_id = players[0]
+        # Build the official MLB headshot URL
+        headshot_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{player_id}.jpg"
         
+        stats = mlb.get_player_stats(player_id, stats=['season'], groups=['hitting'], season=year, gameType=game_type)
         if 'hitting' in stats and 'season' in stats['hitting']:
-            return stats['hitting']['season'].splits[0].stat.home_runs
-        return 0
+            return stats['hitting']['season'].splits[0].stat.home_runs, headshot_url
+        return 0, headshot_url
     except Exception as e:
         print(f"API Error for {player_name}: {e}")
-        return 0
+        return 0, None
 
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
         leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameType=game_type, limit=10, position=pos_code)
         if leaders and hasattr(leaders[0], 'statleaders'):
-            data = [{"Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
+            data = []
+            for l in leaders[0].statleaders:
+                pid = l.person.id
+                h_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{pid}.jpg"
+                data.append({"Photo": h_url, "Player": l.person.fullname, "Team": l.team.name, "HR": l.value})
             return pd.DataFrame(data)
         return pd.DataFrame()
     except Exception:
@@ -132,7 +138,6 @@ st.title("⚾ 2026 Home Run League War Room")
 st.sidebar.header("⚙️ League Settings")
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
 
-# Correct API parameters mapped based on sidebar selection
 api_year = 2026
 api_game_type = "S" if season_mode == "Spring Training" else "R"
 
@@ -146,10 +151,13 @@ roster_df = load_draft_data()
 managers = roster_df['Manager'].unique().tolist()
 
 all_team_data = {}
-with st.spinner("Crunching live MLB stats..."):
+with st.spinner("Crunching live MLB stats & generating headshots..."):
     for m in managers:
         team_df = roster_df[roster_df['Manager'] == m].copy()
-        team_df['HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, api_year, api_game_type))
+        # Fetch data tuple (HR, URL) and split into two columns
+        stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, api_year, api_game_type))
+        team_df['HR'] = stats_data.apply(lambda x: x[0])
+        team_df['Photo'] = stats_data.apply(lambda x: x[1])
         all_team_data[m] = team_df
 
 # --- 5. TABS ---
@@ -169,8 +177,13 @@ with tab1:
     for i, m in enumerate(managers):
         with cols[i]:
             st.markdown(f"### {m}'s Team")
-            display_df = all_team_data[m][['Position', 'Player', 'MLB Team', 'HR']].sort_values(by="HR", ascending=False)
-            st.dataframe(display_df, hide_index=True, use_container_width=True)
+            display_df = all_team_data[m][['Photo', 'Position', 'Player', 'MLB Team', 'HR']].sort_values(by="HR", ascending=False)
+            st.dataframe(
+                display_df, 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+            )
 
 with tab2:
     st.subheader("Matchup Analyzer")
@@ -179,8 +192,8 @@ with tab2:
     m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0)
     
     if m1 and m2:
-        df1 = all_team_data[m1][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m1} Player', 'HR': f'{m1} HR'})
-        df2 = all_team_data[m2][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+        df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
+        df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
         
         matchup_df = pd.merge(df1, df2, on='Position', how='outer').fillna('-')
         
@@ -193,7 +206,15 @@ with tab2:
              st.metric(label=f"{m1} vs {m2}", value=f"{score1} - {score2}")
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(matchup_df, hide_index=True, use_container_width=True)
+        st.dataframe(
+            matchup_df, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                f"{m1} Photo": st.column_config.ImageColumn(""),
+                f"{m2} Photo": st.column_config.ImageColumn("")
+            }
+        )
 
 with tab3:
     st.subheader("Top 10 Leaders by Position")
@@ -202,7 +223,12 @@ with tab3:
     
     leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
     if not leaders_df.empty:
-        st.dataframe(leaders_df, hide_index=True, use_container_width=True)
+        st.dataframe(
+            leaders_df, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={"Photo": st.column_config.ImageColumn("Photo")}
+        )
     else:
         st.warning("No data available for this position yet.")
 
@@ -215,23 +241,6 @@ with tab4:
             retro_team_data = {}
             for m in managers:
                 team_df = roster_df[roster_df['Manager'] == m].copy()
-                # Correctly pulling 2025 stats!
-                team_df['2025 HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, 2025, "R"))
-                retro_team_data[m] = team_df
-            
-            retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
-            retro_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
-            
-            st.markdown("### 🏆 2025 Simulated Standings")
-            st.dataframe(retro_df, use_container_width=True)
-            
-            st.divider()
-            st.markdown("### 📋 2025 Player Contributions")
-            cols = st.columns(len(managers))
-            for i, m in enumerate(managers):
-                with cols[i]:
-                    st.markdown(f"### {m}'s Team")
-                    display_df = retro_team_data[m][['Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
-                    st.dataframe(display_df, hide_index=True, use_container_width=True)
-
-st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")
+                stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
+                team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
+                team_df['Photo'] = stats

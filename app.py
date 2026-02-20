@@ -8,7 +8,8 @@ from datetime import datetime
 mlb = mlbstatsapi.Mlb()
 
 # --- CONFIGURATION ---
-spreadsheet_url = "https://docs.google.com/spreadsheets/d/1LloUGBIfXH9fidkt8gFYiFnHpLmP6NhORvqP3jnyyuw/edit?gid=0#gid=0"
+# Corrected URL ID
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1LloUGBIfXH9fidkt8gFYiFnHpLmP6NhORvqP3jnyyuw/edit"
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 if 'watchlist' not in st.session_state:
@@ -21,7 +22,7 @@ def fetch_hr_count(player_name, season_type="2026REG"):
         players = mlb.get_people_id(player_name)
         if not players: return 0
         stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=season_type)
-        return stats['hitting']['season'].splits[0].stat.home_runs if 'hitting' in stats else 0
+        return stats['hitting']['season'].splits[0].stat.home_runs if 'hitting' in stats and 'season' in stats['hitting'] else 0
     except: return 0
 
 @st.cache_data(ttl=3600)
@@ -36,14 +37,6 @@ def get_top_ten_by_position(pos_code, season_type="2026REG"):
 st.set_page_config(page_title="2026 Homer Draft", layout="wide", page_icon="⚾")
 st.title("⚾ 2026 Home Run League War Room")
 
-with st.expander("ℹ️ New Manager? Read the League Guide"):
-    st.write("""
-    - **Points:** 1 HR = 1 Point.
-    - **Live Data:** Stats sync with MLB.com hourly.
-    - **Reset:** Use the sidebar to toggle between Spring Training and Regular Season.
-    - **Watchlist:** Use the 'Leaders' tab to track potential trade targets.
-    """)
-
 # Sidebar
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
 api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
@@ -51,31 +44,49 @@ api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
 if st.sidebar.button('🔄 Refresh All Data'):
     st.cache_data.clear()
 
-# Main Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["🏆 Standings", "🔍 Leaders", "⚔️ Head-to-Head", "📋 Watchlist"])
-
 # 1. Connect and Load Data
 conn = st.connection("gsheets", type=GSheetsConnection)
-df = conn.read(spreadsheet=spreadsheet_url, worksheet="TEAMS", header=0)
-managers = {
-    "Chris": df.iloc[1:10, 1].tolist(), "Rob": df.iloc[1:10, 4].tolist(),
-    "Mike": df.iloc[1:10, 7].tolist(), "Kenyon": df.iloc[1:10, 10].tolist()
-}
-positions = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+try:
+    df = conn.read(spreadsheet=spreadsheet_url, worksheet="TEAMS", header=0)
+    managers = {
+        "Chris": df.iloc[1:10, 1].tolist(), "Rob": df.iloc[1:10, 4].tolist(),
+        "Mike": df.iloc[1:10, 7].tolist(), "Kenyon": df.iloc[1:10, 10].tolist()
+    }
+except Exception as e:
+    st.error(f"Error loading Google Sheet. Check the URL and ensure the tab is named 'TEAMS'. Error: {e}")
+    st.stop()
 
-# Cache team stats for the whole run
+# Cache team stats
 all_team_data = {}
-for m, roster in managers.items():
-    p_data = [{"Position": positions[i], "Player": p, "HR": fetch_hr_count(p, api_season_code)} for i, p in enumerate(roster)]
-    all_team_data[m] = pd.DataFrame(p_data)
+positions = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH"]
+with st.spinner("Fetching live stats..."):
+    for m, roster in managers.items():
+        p_data = [{"Position": positions[i], "Player": p, "HR": fetch_hr_count(p, api_season_code)} for i, p in enumerate(roster)]
+        all_team_data[m] = pd.DataFrame(p_data)
+
+# Main Tabs
+tab1, tab2, tab3, tab4 = st.tabs(["🏆 Standings", "🔍 Leaders", "⚔️ Head-to-Head", "📋 Watchlist"])
 
 # --- TAB 1: STANDINGS ---
 with tab1:
     standings = [{"Manager": m, "Points": df_m['HR'].sum()} for m, df_m in all_team_data.items()]
-    # Define standings_df here so the Recap section can use it later
     standings_df = pd.DataFrame(standings).sort_values(by="Points", ascending=False)
     st.subheader(f"Current Standings ({season_mode})")
     st.table(standings_df)
+
+    # DRAFT RECAP (Auto-highlights the best pick)
+    st.divider()
+    st.subheader("🔥 Spring Draft Recap")
+    all_players = []
+    for m, df_m in all_team_data.items():
+        for _, row in df_m.iterrows():
+            all_players.append({"Manager": m, "Player": row['Player'], "HR": row['HR']})
+    recap_df = pd.DataFrame(all_players).sort_values(by="HR", ascending=False)
+    if recap_df['HR'].max() > 0:
+        top_player = recap_df.iloc[0]
+        st.info(f"🏆 **Draft Steal:** {top_player['Player']} ({top_player['Manager']}) with {top_player['HR']} HRs!")
+    else:
+        st.info("No homers recorded yet today. Waiting for the first crack of the bat!")
 
 # --- TAB 2: POSITION LEADERS ---
 with tab2:
@@ -83,60 +94,22 @@ with tab2:
     sel_p = st.selectbox("Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
     l_df = get_top_ten_by_position(sel_p, api_season_code)
     st.dataframe(l_df, use_container_width=True, hide_index=True)
-    to_watch = st.selectbox("Add to Watchlist:", ["None"] + l_df['Player'].tolist())
-    if st.button("Add"): 
-        if to_watch != "None": st.session_state.watchlist.append(to_watch); st.rerun()
 
 # --- TAB 3: HEAD-TO-HEAD ---
 with tab3:
     col1, col2 = st.columns(2)
     m1 = col1.selectbox("Manager 1", list(managers.keys()), index=0)
     m2 = col2.selectbox("Manager 2", list(managers.keys()), index=1)
-    
-    # Side-by-side comparison
-    comparison_df = all_team_data[m1].merge(all_team_data[m2], on="Position", suffixes=(f" ({m1})", f" ({m2})"))
-    st.dataframe(comparison_df, use_container_width=True, hide_index=True)
-    
-    # Score Summary
+    comp_df = all_team_data[m1].merge(all_team_data[m2], on="Position", suffixes=(f" ({m1})", f" ({m2})"))
+    st.dataframe(comp_df, use_container_width=True, hide_index=True)
     s1, s2 = all_team_data[m1]['HR'].sum(), all_team_data[m2]['HR'].sum()
-    st.subheader(f"Score: {m1} ({s1}) vs {m2} ({s2})")
-    if s1 != s2:
-        st.success(f"{m1 if s1 > s2 else m2} is leading by {abs(s1-s2)} HRs!")
+    st.success(f"Score: {m1} ({s1}) vs {m2} ({s2})")
 
 # --- TAB 4: WATCHLIST ---
 with tab4:
-    st.subheader("Players to Watch")
     if st.session_state.watchlist:
-        for p in st.session_state.watchlist:
-            hr = fetch_hr_count(p, api_season_code)
-            st.write(f"**{p}**: {hr} HRs this season")
+        for p in st.session_state.watchlist: st.write(f"- {p}")
         if st.button("Clear All"): st.session_state.watchlist = []; st.rerun()
-    else:
-        st.info("Watchlist is empty. Add players from the Leaders tab.")
+    else: st.info("Watchlist is empty.")
 
-# --- TAB 5: DRAFT RECAP (SPRING BREAKOUT) ---
-with tab1: # We'll put it right at the top of the standings tab
-    st.divider()
-    st.subheader("🔥 Spring Draft Recap")
-    
-    # Logic to find the "Best Pick" so far
-    all_players = []
-    for m, roster in managers.items():
-        for p in roster:
-            hr = fetch_hr_count(p, api_season_code)
-            all_players.append({"Manager": m, "Player": p, "HR": hr})
-    
-    recap_df = pd.DataFrame(all_players).sort_values(by="HR", ascending=False)
-    
-    if recap_df['HR'].max() > 0:
-        top_player = recap_df.iloc[0]
-        st.info(f"🏆 **Draft Steal of the Week:** {top_player['Player']} ({top_player['Manager']}) with {top_player['HR']} HRs!")
-        
-        # Show a mini "Power Rankings" based on current momentum
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Total League Homers", recap_df['HR'].sum())
-        with col2:
-            st.metric("Top Manager", standings_df.iloc[0]['Manager'], f"+{standings_df.iloc[0]['Points']} pts")
-    else:
-        st.write("⏳ *No homers recorded yet today. Waiting for the first crack of the bat!*")
+st.caption(f"Last sync: {datetime.now().strftime('%H:%M:%S')}")

@@ -94,8 +94,10 @@ def fetch_hr_count(player_name, year=2026, game_type="R"):
     try:
         players = mlb.get_people_id(player_name)
         if not players: return 0
-        # The API expects season as an integer and gameType as 'R' or 'S'
-        stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=year, gameType=game_type)
+        
+        # FIX: We must pass stats=['season'], not types=['season']
+        stats = mlb.get_player_stats(players[0], stats=['season'], groups=['hitting'], season=year, gameType=game_type)
+        
         if 'hitting' in stats and 'season' in stats['hitting']:
             return stats['hitting']['season'].splits[0].stat.home_runs
         return 0

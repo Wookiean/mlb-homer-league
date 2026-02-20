@@ -1,4 +1,4 @@
 streamlit
-mlbstatsapi
+python-mlb-statsapi
 streamlit-gsheets
 pandas

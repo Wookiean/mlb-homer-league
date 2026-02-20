@@ -9,7 +9,7 @@ mlb = mlbstatsapi.Mlb()
 
 # --- CONFIGURATION ---
 # Your correct "Tidy" spreadsheet URL
-spreadsheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTnvuMVO7hNvaoWWbf3NvVp0V_Nq_e7IkrVYyBRF-KnpacXewwYmJm4pKBi2vF1-CTR-9dIHVR4ZYE5/pubhtml"
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs/edit"
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 if 'watchlist' not in st.session_state:

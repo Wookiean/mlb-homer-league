@@ -5,23 +5,95 @@ from datetime import datetime
 
 # --- 1. PAGE SETUP & CONFIG ---
 st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="⚾")
+
+# --- BASEBALL THEME CSS ---
+def apply_baseball_theme():
+    st.markdown("""
+    <style>
+    /* Main background: Vintage Baseball Uniform Off-White */
+    .stApp {
+        background-color: #F4F4F0;
+    }
+    
+    /* Sidebar: Classic Scoreboard Green */
+    [data-testid="stSidebar"] {
+        background-color: #113C2B;
+    }
+    [data-testid="stSidebar"] * {
+        color: #F4F4F0 !important;
+    }
+
+    /* Titles & Headers: Baseball Stitch Red */
+    h1, h2, h3 {
+        color: #C8102E !important;
+        font-family: 'Trebuchet MS', Helvetica, sans-serif;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /* Scoreboard styling for Head-to-Head Metrics */
+    [data-testid="stMetricValue"] {
+        color: #FDB827 !important; /* Jumbotron Yellow */
+        background-color: #111111;
+        padding: 10px 20px;
+        border-radius: 5px;
+        border: 4px solid #333333;
+        font-family: 'Courier New', Courier, monospace;
+        font-weight: bold;
+        text-align: center;
+        display: inline-block;
+    }
+    [data-testid="stMetricLabel"] {
+        font-weight: bold;
+        font-size: 18px;
+        color: #113C2B;
+    }
+
+    /* Style the Tabs like Ash Wood Bats */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #E2D1B3; 
+        border-radius: 8px;
+        padding: 5px;
+        border: 2px solid #C4A47C;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #113C2B;
+        font-weight: bold;
+        font-size: 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #C8102E !important;
+        color: #FFFFFF !important;
+        border-radius: 5px;
+    }
+    
+    /* Dataframe borders */
+    [data-testid="stDataFrame"] {
+        border: 2px solid #113C2B;
+        border-radius: 5px;
+        box-shadow: 3px 3px 8px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+apply_baseball_theme()
+
+# --- 2. API SETUP & SPREADSHEET CONFIG ---
 mlb = mlbstatsapi.Mlb()
 
-# We use the direct CSV export link to completely bypass the "HTTP 400" authentication errors.
 SHEET_ID = "1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs"
 GID = "317249395"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
 
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
-# --- 2. API HELPER FUNCTIONS ---
-@st.cache_data(ttl=3600) # Cache data for 1 hour so the app loads instantly on refresh
+# --- 3. HELPER FUNCTIONS ---
+@st.cache_data(ttl=3600)
 def fetch_hr_count(player_name, season_type="2026REG"):
     try:
         players = mlb.get_people_id(player_name)
-        if not players: 
-            return 0
-        
+        if not players: return 0
         stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=season_type)
         if 'hitting' in stats and 'season' in stats['hitting']:
             return stats['hitting']['season'].splits[0].stat.home_runs
@@ -40,12 +112,10 @@ def get_league_leaders(pos_code, season_type="2026REG"):
     except Exception:
         return pd.DataFrame()
 
-# --- 3. DATA LOADING ---
-@st.cache_data(ttl=300) # Re-check the Google Sheet every 5 minutes
+@st.cache_data(ttl=300)
 def load_draft_data():
     try:
         df = pd.read_csv(CSV_URL)
-        # Drop empty rows just in case
         return df.dropna(subset=['Manager', 'Player'])
     except Exception as e:
         st.error(f"Failed to load spreadsheet. Error: {e}")
@@ -55,33 +125,30 @@ def load_draft_data():
 st.title("⚾ 2026 Home Run League War Room")
 
 # Sidebar Controls
-st.sidebar.header("League Settings")
+st.sidebar.header("⚙️ League Settings")
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
 api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
 
+st.sidebar.divider()
 if st.sidebar.button("🔄 Force Refresh All Data"):
     st.cache_data.clear()
     st.rerun()
 
-# Load the raw spreadsheet data
+# Load Data
 roster_df = load_draft_data()
 managers = roster_df['Manager'].unique().tolist()
 
-# Process live stats for all teams
 all_team_data = {}
 with st.spinner("Crunching live MLB stats..."):
     for m in managers:
         team_df = roster_df[roster_df['Manager'] == m].copy()
-        # Fetch HRs for each player in this manager's dataframe
         team_df['HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, api_season_code))
         all_team_data[m] = team_df
 
 # --- 5. TABS ---
 tab1, tab2, tab3 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders"])
 
-# TAB 1: STANDINGS
 with tab1:
-    # Calculate total points
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
     
@@ -91,34 +158,37 @@ with tab1:
     st.divider()
     st.subheader("📋 Full Roster Breakdown")
     
-    # Create columns to display each manager's roster side-by-side
     cols = st.columns(len(managers))
     for i, m in enumerate(managers):
         with cols[i]:
-            st.markdown(f"**{m}'s Team**")
+            st.markdown(f"### {m}'s Team")
             display_df = all_team_data[m][['Position', 'Player', 'MLB Team', 'HR']].sort_values(by="HR", ascending=False)
             st.dataframe(display_df, hide_index=True, use_container_width=True)
 
-# TAB 2: HEAD-TO-HEAD
 with tab2:
     st.subheader("Matchup Analyzer")
     col1, col2 = st.columns(2)
-    m1 = col1.selectbox("Select Team 1", managers, index=0)
-    m2 = col2.selectbox("Select Team 2", managers, index=1 if len(managers) > 1 else 0)
+    m1 = col1.selectbox("Select Away Team", managers, index=0)
+    m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0)
     
     if m1 and m2:
         df1 = all_team_data[m1][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m1} Player', 'HR': f'{m1} HR'})
         df2 = all_team_data[m2][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m2} Player', 'HR': f'{m2} HR'})
         
-        # Merge on position to compare directly
         matchup_df = pd.merge(df1, df2, on='Position', how='outer').fillna('-')
-        st.dataframe(matchup_df, hide_index=True, use_container_width=True)
         
+        # Display the custom Jumbotron metric
+        st.markdown("<br>", unsafe_allow_html=True)
         score1 = all_team_data[m1]['HR'].sum()
         score2 = all_team_data[m2]['HR'].sum()
-        st.info(f"**Current Score:** {m1} **{score1}** — **{score2}** {m2}")
+        
+        sc1, sc2, sc3 = st.columns([1, 2, 1])
+        with sc2:
+             st.metric(label=f"{m1} vs {m2}", value=f"{score1} - {score2}")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.dataframe(matchup_df, hide_index=True, use_container_width=True)
 
-# TAB 3: MLB LEADERS
 with tab3:
     st.subheader("Top 10 Leaders by Position")
     pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
@@ -130,4 +200,4 @@ with tab3:
     else:
         st.warning("No data available for this position yet.")
 
-st.caption(f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")
+st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")

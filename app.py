@@ -10,9 +10,9 @@ st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="
 def apply_baseball_theme():
     st.markdown("""
     <style>
-    /* Main background: Vintage Baseball Uniform Off-White */
+    /* Main background: Road Uniform Gray (much softer on the eyes) */
     .stApp {
-        background-color: #F4F4F0;
+        background-color: #D3D5D7;
     }
     
     /* Sidebar: Classic Scoreboard Green */

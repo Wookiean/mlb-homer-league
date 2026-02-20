@@ -1,0 +1,4 @@
+streamlit
+mlbstatsapi
+streamlit-gsheets
+pandas

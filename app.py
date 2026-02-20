@@ -8,7 +8,7 @@ from datetime import datetime
 mlb = mlbstatsapi.Mlb()
 
 # --- CONFIGURATION ---
-spreadsheet_url = "https://docs.google.com/spreadsheets/d/1LloUGBIfXH9fidkt8gFYiFnHpLmP6NhORvqP3jnyyuw/edit"
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1LloUGBIfXH9fidkt8gFYiFnHpLmP6NhORvqP3jnyyuw/edit?gid=0#gid=0"
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 if 'watchlist' not in st.session_state:

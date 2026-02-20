@@ -36,6 +36,14 @@ def get_top_ten_by_position(pos_code, season_type="2026REG"):
 st.set_page_config(page_title="2026 Homer Draft", layout="wide", page_icon="⚾")
 st.title("⚾ 2026 Home Run League War Room")
 
+with st.expander("ℹ️ New Manager? Read the League Guide"):
+    st.write("""
+    - **Points:** 1 HR = 1 Point.
+    - **Live Data:** Stats sync with MLB.com hourly.
+    - **Reset:** Use the sidebar to toggle between Spring Training and Regular Season.
+    - **Watchlist:** Use the 'Leaders' tab to track potential trade targets.
+    """)
+
 # Sidebar
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
 api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
@@ -102,3 +110,30 @@ with tab4:
         if st.button("Clear All"): st.session_state.watchlist = []; st.rerun()
     else:
         st.info("Watchlist is empty. Add players from the Leaders tab.")
+
+# --- TAB 5: DRAFT RECAP (SPRING BREAKOUT) ---
+with tab1: # We'll put it right at the top of the standings tab
+    st.divider()
+    st.subheader("🔥 Spring Draft Recap")
+    
+    # Logic to find the "Best Pick" so far
+    all_players = []
+    for m, roster in managers.items():
+        for p in roster:
+            hr = fetch_hr_count(p, api_season_code)
+            all_players.append({"Manager": m, "Player": p, "HR": hr})
+    
+    recap_df = pd.DataFrame(all_players).sort_values(by="HR", ascending=False)
+    
+    if recap_df['HR'].max() > 0:
+        top_player = recap_df.iloc[0]
+        st.info(f"🏆 **Draft Steal of the Week:** {top_player['Player']} ({top_player['Manager']}) with {top_player['HR']} HRs!")
+        
+        # Show a mini "Power Rankings" based on current momentum
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total League Homers", recap_df['HR'].sum())
+        with col2:
+            st.metric("Top Manager", standings_df.iloc[0]['Manager'], f"+{standings_df.iloc[0]['Points']} pts")
+    else:
+        st.write("⏳ *No homers recorded yet today. Waiting for the first crack of the bat!*")

@@ -100,7 +100,7 @@ with tab1:
             st.dataframe(display_df, hide_index=True, use_container_width=True)
 
 # TAB 2: HEAD-TO-HEAD
-with tab3:
+with tab2:
     st.subheader("Matchup Analyzer")
     col1, col2 = st.columns(2)
     m1 = col1.selectbox("Select Team 1", managers, index=0)
@@ -119,7 +119,7 @@ with tab3:
         st.info(f"**Current Score:** {m1} **{score1}** — **{score2}** {m2}")
 
 # TAB 3: MLB LEADERS
-with tab2:
+with tab3:
     st.subheader("Top 10 Leaders by Position")
     pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
     selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])

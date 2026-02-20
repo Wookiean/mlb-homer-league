@@ -89,14 +89,32 @@ CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
+
+# This dictionary translates plain spreadsheet names to exact MLB API names
+API_NAME_MAP = {
+    "Jr. Caminero": "Junior Caminero",
+    "Jose Ramirez": "José Ramírez",
+    "Eugenio Suarez": "Eugenio Suárez",
+    "Vladimir Guerrero": "Vladimir Guerrero Jr.",
+    "Jazz Chisholm": "Jazz Chisholm Jr.",
+    "Ronald Acuna Jr.": "Ronald Acuña Jr.",
+    "Lourdes Gurriel": "Lourdes Gurriel Jr.",
+    "Teoscar Hernandez": "Teoscar Hernández",
+    "Luis Robert": "Luis Robert Jr."
+}
+
 @st.cache_data(ttl=3600)
 def fetch_player_data(player_name, year=2026, game_type="R"):
+    # Intercept the name and translate it if it is in our map
+    search_name = API_NAME_MAP.get(player_name, player_name)
+    
     try:
-        players = mlb.get_people_id(player_name)
-        if not players: return 0, None
+        players = mlb.get_people_id(search_name)
+        if not players: 
+            print(f"Still can't find: {search_name}")
+            return 0, None
         
         player_id = players[0]
-        # Build the official MLB headshot URL
         headshot_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{player_id}.jpg"
         
         stats = mlb.get_player_stats(player_id, stats=['season'], groups=['hitting'], season=year, gameType=game_type)
@@ -104,7 +122,7 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
             return stats['hitting']['season'].splits[0].stat.home_runs, headshot_url
         return 0, headshot_url
     except Exception as e:
-        print(f"API Error for {player_name}: {e}")
+        print(f"API Error for {search_name}: {e}")
         return 0, None
 
 @st.cache_data(ttl=3600)

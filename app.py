@@ -90,21 +90,23 @@ is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
 @st.cache_data(ttl=3600)
-def fetch_hr_count(player_name, season_type="2026REG"):
+def fetch_hr_count(player_name, year=2026, game_type="R"):
     try:
         players = mlb.get_people_id(player_name)
         if not players: return 0
-        stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=season_type)
+        # The API expects season as an integer and gameType as 'R' or 'S'
+        stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=year, gameType=game_type)
         if 'hitting' in stats and 'season' in stats['hitting']:
             return stats['hitting']['season'].splits[0].stat.home_runs
         return 0
-    except Exception:
+    except Exception as e:
+        print(f"API Error for {player_name}: {e}")
         return 0
 
 @st.cache_data(ttl=3600)
-def get_league_leaders(pos_code, season_type="2026REG"):
+def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
-        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=season_type, limit=10, position=pos_code)
+        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameType=game_type, limit=10, position=pos_code)
         if leaders and hasattr(leaders[0], 'statleaders'):
             data = [{"Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
             return pd.DataFrame(data)
@@ -127,7 +129,10 @@ st.title("⚾ 2026 Home Run League War Room")
 # Sidebar Controls
 st.sidebar.header("⚙️ League Settings")
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
-api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
+
+# Correct API parameters mapped based on sidebar selection
+api_year = 2026
+api_game_type = "S" if season_mode == "Spring Training" else "R"
 
 st.sidebar.divider()
 if st.sidebar.button("🔄 Force Refresh All Data"):
@@ -142,7 +147,7 @@ all_team_data = {}
 with st.spinner("Crunching live MLB stats..."):
     for m in managers:
         team_df = roster_df[roster_df['Manager'] == m].copy()
-        team_df['HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, api_season_code))
+        team_df['HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, api_year, api_game_type))
         all_team_data[m] = team_df
 
 # --- 5. TABS ---
@@ -193,7 +198,7 @@ with tab3:
     pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
     selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
     
-    leaders_df = get_league_leaders(selected_pos, api_season_code)
+    leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
     if not leaders_df.empty:
         st.dataframe(leaders_df, hide_index=True, use_container_width=True)
     else:
@@ -208,7 +213,8 @@ with tab4:
             retro_team_data = {}
             for m in managers:
                 team_df = roster_df[roster_df['Manager'] == m].copy()
-                team_df['2025 HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, "2025REG"))
+                # Correctly pulling 2025 stats!
+                team_df['2025 HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, 2025, "R"))
                 retro_team_data[m] = team_df
             
             retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]

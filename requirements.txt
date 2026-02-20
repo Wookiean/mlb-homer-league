@@ -1,4 +1,4 @@
 streamlit
 python-mlb-statsapi
-streamlit-gsheets
+st-gsheets-connection
 pandas

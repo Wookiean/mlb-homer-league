@@ -48,12 +48,14 @@ if st.sidebar.button("🔄 Refresh All Data"):
 # 1. Connect and Load Data from the new 'Draft_Data' tab
 conn = st.connection("gsheets", type=GSheetsConnection)
 try:
-    df_raw = conn.read(spreadsheet=spreadsheet_url, worksheet="Draft_Data")
+    # Adding ttl=0 ensures it pulls the latest data and doesn't get stuck on an old error
+    df_raw = conn.read(spreadsheet=spreadsheet_url, worksheet="Draft_Data", ttl=0)
+    
     # Clean up any empty rows and map managers to their players
     df_raw = df_raw.dropna(subset=['Manager', 'Player'])
     managers = {m: df_raw[df_raw['Manager'] == m]['Player'].tolist() for m in df_raw['Manager'].unique()}
 except Exception as e:
-    st.error(f"Error loading [Draft Data]({spreadsheet_url}). Ensure the tab is named 'Draft_Data'. Error: {e}")
+    st.error(f"Error loading [Draft Data]({spreadsheet_url}). Check that the tab name is exactly 'Draft_Data'. Error: {e}")
     st.stop()
 
 # 2. Fetch Live Stats

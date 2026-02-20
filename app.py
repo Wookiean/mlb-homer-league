@@ -72,7 +72,10 @@ for m, roster in managers.items():
 # --- TAB 1: STANDINGS ---
 with tab1:
     standings = [{"Manager": m, "Points": df_m['HR'].sum()} for m, df_m in all_team_data.items()]
-    st.table(pd.DataFrame(standings).sort_values(by="Points", ascending=False))
+    # Define standings_df here so the Recap section can use it later
+    standings_df = pd.DataFrame(standings).sort_values(by="Points", ascending=False)
+    st.subheader(f"Current Standings ({season_mode})")
+    st.table(standings_df)
 
 # --- TAB 2: POSITION LEADERS ---
 with tab2:

@@ -1,26 +1,27 @@
 import streamlit as st
-import mlbstatsapi
 import pandas as pd
-from streamlit_gsheets import GSheetsConnection
+import mlbstatsapi
 from datetime import datetime
 
-# Initialize MLB API
+# --- 1. PAGE SETUP & CONFIG ---
+st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="⚾")
 mlb = mlbstatsapi.Mlb()
 
-# --- CONFIGURATION ---
-# Your correct "Tidy" spreadsheet URL
-spreadsheet_url = "https://docs.google.com/spreadsheets/d/1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs/edit"
+# We use the direct CSV export link to completely bypass the "HTTP 400" authentication errors.
+SHEET_ID = "1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs"
+GID = "317249395"
+CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
-if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = []
-
-# --- API FUNCTIONS ---
-@st.cache_data(ttl=3600)
+# --- 2. API HELPER FUNCTIONS ---
+@st.cache_data(ttl=3600) # Cache data for 1 hour so the app loads instantly on refresh
 def fetch_hr_count(player_name, season_type="2026REG"):
     try:
         players = mlb.get_people_id(player_name)
-        if not players: return 0
+        if not players: 
+            return 0
+        
         stats = mlb.get_player_stats(players[0], groups=['hitting'], types=['season'], season=season_type)
         if 'hitting' in stats and 'season' in stats['hitting']:
             return stats['hitting']['season'].splits[0].stat.home_runs
@@ -29,89 +30,104 @@ def fetch_hr_count(player_name, season_type="2026REG"):
         return 0
 
 @st.cache_data(ttl=3600)
-def get_top_ten_by_position(pos_code, season_type="2026REG"):
+def get_league_leaders(pos_code, season_type="2026REG"):
     try:
         leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=season_type, limit=10, position=pos_code)
-        if leaders and len(leaders) > 0 and hasattr(leaders[0], 'statleaders'):
+        if leaders and hasattr(leaders[0], 'statleaders'):
             data = [{"Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
             return pd.DataFrame(data)
-        return pd.DataFrame(columns=["Player", "Team", "HR"])
+        return pd.DataFrame()
     except Exception:
-        return pd.DataFrame(columns=["Player", "Team", "HR"])
+        return pd.DataFrame()
 
-# --- APP UI ---
-st.set_page_config(page_title="2026 Homer Draft", layout="wide", page_icon="⚾")
+# --- 3. DATA LOADING ---
+@st.cache_data(ttl=300) # Re-check the Google Sheet every 5 minutes
+def load_draft_data():
+    try:
+        df = pd.read_csv(CSV_URL)
+        # Drop empty rows just in case
+        return df.dropna(subset=['Manager', 'Player'])
+    except Exception as e:
+        st.error(f"Failed to load spreadsheet. Error: {e}")
+        st.stop()
+
+# --- 4. MAIN APP UI ---
 st.title("⚾ 2026 Home Run League War Room")
 
-# Sidebar
+# Sidebar Controls
+st.sidebar.header("League Settings")
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
 api_season_code = "2026PRE" if season_mode == "Spring Training" else "2026REG"
 
-if st.sidebar.button("🔄 Refresh All Data"):
+if st.sidebar.button("🔄 Force Refresh All Data"):
     st.cache_data.clear()
+    st.rerun()
 
-# 1. Connect and Load Data
-conn = st.connection("gsheets", type=GSheetsConnection)
-try:
-    # Use the specific worksheet name from your sheet
-    df_raw = conn.read(spreadsheet=spreadsheet_url, worksheet="Draft_Data", ttl=0)
-    df_raw = df_raw.dropna(subset=['Manager', 'Player'])
-    managers = {m: df_raw[df_raw['Manager'] == m]['Player'].tolist() for m in df_raw['Manager'].unique()}
-except Exception as e:
-    st.error(f"Error loading [Draft Data]({spreadsheet_url}). Ensure the tab is named 'Draft_Data' and Published to Web. Error: {e}")
-    st.stop()
+# Load the raw spreadsheet data
+roster_df = load_draft_data()
+managers = roster_df['Manager'].unique().tolist()
 
-# 2. Fetch Live Stats
+# Process live stats for all teams
 all_team_data = {}
-with st.spinner("Fetching live stats..."):
-    for m, roster in managers.items():
-        p_data = []
-        for p in roster:
-            # Match position from the sheet
-            pos_row = df_raw[df_raw['Player'] == p]['Position']
-            pos = pos_row.iloc[0] if not pos_row.empty else "N/A"
-            p_data.append({"Position": pos, "Player": p, "HR": fetch_hr_count(p, api_season_code)})
-        all_team_data[m] = pd.DataFrame(p_data)
+with st.spinner("Crunching live MLB stats..."):
+    for m in managers:
+        team_df = roster_df[roster_df['Manager'] == m].copy()
+        # Fetch HRs for each player in this manager's dataframe
+        team_df['HR'] = team_df['Player'].apply(lambda p: fetch_hr_count(p, api_season_code))
+        all_team_data[m] = team_df
 
-# Main Navigation
-tab1, tab2, tab3, tab4 = st.tabs(["🏆 Standings", "⚾ Leaders", "⚔️ Head-to-Head", "👀 Watchlist"])
+# --- 5. TABS ---
+tab1, tab2, tab3 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders"])
 
-# --- TAB 1: STANDINGS ---
+# TAB 1: STANDINGS
 with tab1:
-    standings = [{"Manager": m, "Points": df_m['HR'].sum()} for m, df_m in all_team_data.items()]
-    standings_df = pd.DataFrame(standings).sort_values(by="Points", ascending=False)
-    st.subheader(f"Current Standings ({season_mode})")
-    st.table(standings_df)
+    # Calculate total points
+    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum()} for m in managers]
+    standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
+    
+    st.subheader(f"Current {season_mode} Standings")
+    st.dataframe(standings_df, use_container_width=True)
 
-# --- TAB 2: POSITION LEADERS ---
-with tab2:
-    pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "DH"}
-    sel_pos = st.selectbox("View Top 10 Leaders by Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
-    ldf = get_top_ten_by_position(sel_pos, api_season_code)
-    if not ldf.empty:
-        st.dataframe(ldf, use_container_width=True, hide_index=True)
-    else:
-        st.info("No stats available for this position yet.")
+    st.divider()
+    st.subheader("📋 Full Roster Breakdown")
+    
+    # Create columns to display each manager's roster side-by-side
+    cols = st.columns(len(managers))
+    for i, m in enumerate(managers):
+        with cols[i]:
+            st.markdown(f"**{m}'s Team**")
+            display_df = all_team_data[m][['Position', 'Player', 'MLB Team', 'HR']].sort_values(by="HR", ascending=False)
+            st.dataframe(display_df, hide_index=True, use_container_width=True)
 
-# --- TAB 3: HEAD-TO-HEAD ---
+# TAB 2: HEAD-TO-HEAD
 with tab3:
+    st.subheader("Matchup Analyzer")
     col1, col2 = st.columns(2)
-    m1 = col1.selectbox("Select Manager 1", list(managers.keys()), index=0)
-    m2 = col2.selectbox("Select Manager 2", list(managers.keys()), index=1)
+    m1 = col1.selectbox("Select Team 1", managers, index=0)
+    m2 = col2.selectbox("Select Team 2", managers, index=1 if len(managers) > 1 else 0)
     
-    comp_df = all_team_data[m1].merge(all_team_data[m2], on="Position", suffixes=(f" ({m1})", f" ({m2})"))
-    st.dataframe(comp_df, use_container_width=True, hide_index=True)
-    
-    s1, s2 = all_team_data[m1]["HR"].sum(), all_team_data[m2]["HR"].sum()
-    st.metric(label="Score Comparison", value=f"{s1} vs {s2}", delta=int(s1-s2))
+    if m1 and m2:
+        df1 = all_team_data[m1][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m1} Player', 'HR': f'{m1} HR'})
+        df2 = all_team_data[m2][['Position', 'Player', 'HR']].rename(columns={'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+        
+        # Merge on position to compare directly
+        matchup_df = pd.merge(df1, df2, on='Position', how='outer').fillna('-')
+        st.dataframe(matchup_df, hide_index=True, use_container_width=True)
+        
+        score1 = all_team_data[m1]['HR'].sum()
+        score2 = all_team_data[m2]['HR'].sum()
+        st.info(f"**Current Score:** {m1} **{score1}** — **{score2}** {m2}")
 
-# --- TAB 4: WATCHLIST ---
-with tab4:
-    new_p = st.text_input("Add a player to watch:")
-    if st.button("Add to List"):
-        if new_p: st.session_state.watchlist.append(new_p); st.rerun()
+# TAB 3: MLB LEADERS
+with tab2:
+    st.subheader("Top 10 Leaders by Position")
+    pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
+    selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
     
-    for p in st.session_state.watchlist:
-        st.write(f"- {p}: {fetch_hr_count(p, api_season_code)} HRs")
+    leaders_df = get_league_leaders(selected_pos, api_season_code)
+    if not leaders_df.empty:
+        st.dataframe(leaders_df, hide_index=True, use_container_width=True)
+    else:
+        st.warning("No data available for this position yet.")
 
-st.caption(f"Last sync: {datetime.now().strftime('%H:%M:%S')}")
+st.caption(f"Last updated: {datetime.now().strftime('%I:%M:%S %p')}")

@@ -176,12 +176,19 @@ with tab1:
 
     st.divider()
     st.subheader("📋 Full Roster Breakdown")
-    cols = st.columns(len(managers))
+    
+    # FIX: Create full-width sub-tabs for each manager instead of squeezing them into side-by-side columns
+    manager_tabs = st.tabs([f"🧢 {m}'s Team" for m in managers])
+    
     for i, m in enumerate(managers):
-        with cols[i]:
-            st.markdown(f"### {m}'s Team")
+        with manager_tabs[i]:
             display_df = all_team_data[m][['Photo', 'Position', 'Display Name', 'MLB Team', 'HR', 'Last 7 Days', 'Last 15 Games']].sort_values(by="HR", ascending=False)
-            st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+            st.dataframe(
+                display_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+            )
 
 with tab2:
     @st.fragment

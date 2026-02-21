@@ -247,34 +247,39 @@ with tab3:
     render_mlb_leaders()
 
 with tab4:
-    st.subheader("⏪ The 2025 Alternate Universe")
-    if st.button("Simulate 2025 Season"):
-        with st.spinner("Traveling back in time to fetch 2025 stats..."):
-            retro_team_data = {}
-            for m in managers:
-                team_df = roster_df[roster_df['Manager'] == m].copy()
-                stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
-                team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
-                team_df['Photo'] = stats_data.apply(lambda x: x[1])
-                retro_team_data[m] = team_df
-            
-            retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
-            st.markdown("### 🏆 2025 Simulated Standings")
-            st.dataframe(pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True), use_container_width=True)
-            
-            st.divider()
-            st.markdown("### 📋 2025 Player Contributions")
-            cols = st.columns(len(managers))
-            for i, m in enumerate(managers):
-                with cols[i]:
-                    st.markdown(f"### {m}'s Team")
-                    display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
-                    st.dataframe(
-                        display_df, 
-                        hide_index=True, 
-                        use_container_width=True, 
-                        column_config={"Photo": st.column_config.ImageColumn("Photo")}
-                    )
+    @st.fragment
+    def render_2025_rewind():
+        st.subheader("⏪ The 2025 Alternate Universe")
+        if st.button("Simulate 2025 Season"):
+            with st.spinner("Traveling back in time to fetch 2025 stats..."):
+                retro_team_data = {}
+                for m in managers:
+                    team_df = roster_df[roster_df['Manager'] == m].copy()
+                    stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
+                    team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
+                    team_df['Photo'] = stats_data.apply(lambda x: x[1])
+                    retro_team_data[m] = team_df
+                
+                retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
+                st.markdown("### 🏆 2025 Simulated Standings")
+                st.dataframe(pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True), use_container_width=True)
+                
+                st.divider()
+                st.markdown("### 📋 2025 Player Contributions")
+                cols = st.columns(len(managers))
+                for i, m in enumerate(managers):
+                    with cols[i]:
+                        st.markdown(f"### {m}'s Team")
+                        display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
+                        st.dataframe(
+                            display_df, 
+                            hide_index=True, 
+                            use_container_width=True, 
+                            column_config={"Photo": st.column_config.ImageColumn("Photo")}
+                        )
+                        
+    # Call the fragment function
+    render_2025_rewind()
 
 with tab5:
     st.subheader("📈 Monthly Home Run Pennant Race")

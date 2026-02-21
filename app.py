@@ -186,8 +186,7 @@ with tab1:
                 display_df, 
                 hide_index=True, 
                 use_container_width=True, 
-                # 🖼️ FIX: Make Standings tab photos larger
-                column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
             )
 
 with tab2:
@@ -223,10 +222,9 @@ with tab2:
                 matchup_df, 
                 hide_index=True, 
                 use_container_width=True, 
-                # 🖼️ FIX: Make Head-to-Head tab photos larger
                 column_config={
-                    f"{m1} Photo": st.column_config.ImageColumn("", width="large"), 
-                    f"{m2} Photo": st.column_config.ImageColumn("", width="large")
+                    f"{m1} Photo": st.column_config.ImageColumn(""), 
+                    f"{m2} Photo": st.column_config.ImageColumn("")
                 }
             )
     render_matchup_analyzer()
@@ -243,8 +241,7 @@ with tab3:
                 leaders_df, 
                 hide_index=True, 
                 use_container_width=True, 
-                # 🖼️ FIX: Make MLB Leaders tab photos larger
-                column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
             )
         else: st.warning("No data available for this position yet.")
     render_mlb_leaders()
@@ -276,8 +273,7 @@ with tab4:
                         display_df, 
                         hide_index=True, 
                         use_container_width=True, 
-                        # 🖼️ FIX: Make 2025 Rewind tab photos larger
-                        column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
+                        column_config={"Photo": st.column_config.ImageColumn("Photo")}
                     )
 
 with tab5:

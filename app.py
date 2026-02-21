@@ -61,7 +61,7 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
     search_name = API_NAME_MAP.get(player_name, player_name)
     try:
         players = mlb.get_people_id(search_name)
-        if not players: return 0, None, 0, "Active", {}
+        if not players: return 0, None, 0, 0, "Active", {}
         
         player_id = players[0]
         headshot_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{player_id}.jpg"
@@ -75,26 +75,28 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
         except Exception:
             pass
         
-        # 🔥 Pull multiple stats at once (Season, Last 7 Days, and Monthly History)
-        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
+        # 🔥 Pull multiple stats at once (Season, Last 7 Days, Last 15 Games, and Monthly History)
+        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'last15Games', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
         
-        season_hr, last_7_hr, monthly_hr = 0, 0, {}
+        season_hr, last_7_hr, last_15_hr, monthly_hr = 0, 0, 0, {}
         
         if 'hitting' in stats:
             if 'season' in stats['hitting'] and stats['hitting']['season'].splits:
                 season_hr = stats['hitting']['season'].splits[0].stat.home_runs
             if 'last7Days' in stats['hitting'] and stats['hitting']['last7Days'].splits:
                 last_7_hr = stats['hitting']['last7Days'].splits[0].stat.home_runs
+            if 'last15Games' in stats['hitting'] and stats['hitting']['last15Games'].splits:
+                last_15_hr = stats['hitting']['last15Games'].splits[0].stat.home_runs
             if 'byMonth' in stats['hitting'] and stats['hitting']['byMonth'].splits:
                 for split in stats['hitting']['byMonth'].splits:
                     month_val = getattr(split, 'month', None)
                     if month_val:
                         monthly_hr[month_val] = split.stat.home_runs
                         
-        return season_hr, headshot_url, last_7_hr, status, monthly_hr
+        return season_hr, headshot_url, last_7_hr, last_15_hr, status, monthly_hr
     except Exception as e:
         print(f"API Error for {search_name}: {e}")
-        return 0, None, 0, "Unknown", {}
+        return 0, None, 0, 0, "Unknown", {}
 
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
@@ -132,13 +134,14 @@ all_team_data = {}
 with st.spinner("Crunching live MLB stats, injury reports, & hot streaks..."):
     for m in managers:
         team_df = roster_df[roster_df['Manager'] == m].copy()
-        # Unpack the 5 pieces of data
+        # Unpack the 6 pieces of data (now including last 15 games)
         stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, api_year, api_game_type))
         team_df['HR'] = stats_data.apply(lambda x: x[0])
         team_df['Photo'] = stats_data.apply(lambda x: x[1])
         team_df['Last 7 Days'] = stats_data.apply(lambda x: x[2])
-        team_df['Status'] = stats_data.apply(lambda x: x[3])
-        team_df['Monthly Data'] = stats_data.apply(lambda x: x[4])
+        team_df['Last 15 Games'] = stats_data.apply(lambda x: x[3])
+        team_df['Status'] = stats_data.apply(lambda x: x[4])
+        team_df['Monthly Data'] = stats_data.apply(lambda x: x[5])
         
         # Apply the IL Ambulance emoji
         def format_name(row):
@@ -151,7 +154,7 @@ with st.spinner("Crunching live MLB stats, injury reports, & hot streaks..."):
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders", "⏪ 2025 Rewind", "📈 Pennant Race"])
 
 with tab1:
-    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum()} for m in managers]
+    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
     st.subheader(f"Current {season_mode} Standings")
     st.dataframe(standings_df, use_container_width=True)
@@ -162,7 +165,7 @@ with tab1:
     for i, m in enumerate(managers):
         with cols[i]:
             st.markdown(f"### {m}'s Team")
-            display_df = all_team_data[m][['Photo', 'Position', 'Display Name', 'MLB Team', 'HR', 'Last 7 Days']].sort_values(by="HR", ascending=False)
+            display_df = all_team_data[m][['Photo', 'Position', 'Display Name', 'MLB Team', 'HR', 'Last 7 Days', 'Last 15 Games']].sort_values(by="HR", ascending=False)
             st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
 
 with tab2:

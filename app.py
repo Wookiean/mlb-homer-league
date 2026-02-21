@@ -108,7 +108,7 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
                         
         return season_hr, headshot_url, last_7_hr, last_15_hr, status, monthly_hr
     except Exception as e:
-        print(f"API Error for {search_name}: {e}")
+        st.error(f"API Error for {search_name}: {e}")
         return 0, None, 0, 0, "Unknown", {}
 
 @st.cache_data(ttl=3600)

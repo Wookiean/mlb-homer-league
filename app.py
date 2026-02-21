@@ -177,7 +177,6 @@ with tab1:
     st.divider()
     st.subheader("📋 Full Roster Breakdown")
     
-    # FIX: Create full-width sub-tabs for each manager instead of squeezing them into side-by-side columns
     manager_tabs = st.tabs([f"🧢 {m}'s Team" for m in managers])
     
     for i, m in enumerate(managers):
@@ -187,7 +186,8 @@ with tab1:
                 display_df, 
                 hide_index=True, 
                 use_container_width=True, 
-                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+                # 🖼️ FIX: Make Standings tab photos larger
+                column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
             )
 
 with tab2:
@@ -219,8 +219,16 @@ with tab2:
             with sc2: st.metric(label=f"{m1} vs {m2}", value=f"{all_team_data[m1]['HR'].sum()} - {all_team_data[m2]['HR'].sum()}")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.dataframe(matchup_df, hide_index=True, use_container_width=True, 
-                         column_config={f"{m1} Photo": st.column_config.ImageColumn(""), f"{m2} Photo": st.column_config.ImageColumn("")})
+            st.dataframe(
+                matchup_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                # 🖼️ FIX: Make Head-to-Head tab photos larger
+                column_config={
+                    f"{m1} Photo": st.column_config.ImageColumn("", width="large"), 
+                    f"{m2} Photo": st.column_config.ImageColumn("", width="large")
+                }
+            )
     render_matchup_analyzer()
 
 with tab3:
@@ -230,7 +238,14 @@ with tab3:
         pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
         selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x], key="leader_pos_select")
         leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
-        if not leaders_df.empty: st.dataframe(leaders_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+        if not leaders_df.empty: 
+            st.dataframe(
+                leaders_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                # 🖼️ FIX: Make MLB Leaders tab photos larger
+                column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
+            )
         else: st.warning("No data available for this position yet.")
     render_mlb_leaders()
 
@@ -257,7 +272,13 @@ with tab4:
                 with cols[i]:
                     st.markdown(f"### {m}'s Team")
                     display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
-                    st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+                    st.dataframe(
+                        display_df, 
+                        hide_index=True, 
+                        use_container_width=True, 
+                        # 🖼️ FIX: Make 2025 Rewind tab photos larger
+                        column_config={"Photo": st.column_config.ImageColumn("Photo", width="large")}
+                    )
 
 with tab5:
     st.subheader("📈 Monthly Home Run Pennant Race")

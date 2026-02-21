@@ -128,7 +128,8 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
-        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameType=game_type, limit=10, position=pos_code)
+        # FIX: The MLB API leaders endpoint requires 'gameTypes' (plural) 
+        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameTypes=game_type, limit=10, position=pos_code)
         if leaders and hasattr(leaders[0], 'statleaders'):
             data = []
             for l in leaders[0].statleaders:
@@ -137,7 +138,8 @@ def get_league_leaders(pos_code, year=2026, game_type="R"):
                 data.append({"Photo": h_url, "Player": l.person.fullname, "Team": l.team.name, "HR": l.value})
             return pd.DataFrame(data)
         return pd.DataFrame()
-    except Exception:
+    except Exception as e:
+        print(f"Leaders API Error: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
@@ -213,7 +215,14 @@ with tab2:
         df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
         df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
         
-        matchup_df = pd.merge(df1, df2, on='Position', how='outer').fillna('-')
+        # Merge the teams, but do NOT fillna yet
+        matchup_df = pd.merge(df1, df2, on='Position', how='outer')
+        
+        # FIX: Only fill dashes for the text columns. Leave missing photos alone so Streamlit doesn't crash!
+        matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
+        matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
+        matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
+        matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
         
         st.markdown("<br>", unsafe_allow_html=True)
         score1 = all_team_data[m1]['HR'].sum()

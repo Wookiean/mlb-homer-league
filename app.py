@@ -171,6 +171,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head",
 with tab1:
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
+    
+    # FIX: Make the leaderboard index start at 1 instead of 0
+    standings_df.index += 1
+    
     st.subheader(f"Current {season_mode} Standings")
     st.dataframe(standings_df, use_container_width=True)
 
@@ -261,8 +265,13 @@ with tab4:
                     retro_team_data[m] = team_df
                 
                 retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
+                retro_standings_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
+                
+                # FIX: Make the leaderboard index start at 1 instead of 0
+                retro_standings_df.index += 1
+                
                 st.markdown("### 🏆 2025 Simulated Standings")
-                st.dataframe(pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True), use_container_width=True)
+                st.dataframe(retro_standings_df, use_container_width=True)
                 
                 st.divider()
                 st.markdown("### 📋 2025 Player Contributions")
@@ -277,7 +286,7 @@ with tab4:
                             use_container_width=True, 
                             column_config={"Photo": st.column_config.ImageColumn("Photo")}
                         )
-                        
+
     # Call the fragment function
     render_2025_rewind()
 

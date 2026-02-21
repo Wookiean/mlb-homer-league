@@ -75,23 +75,36 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
         except Exception:
             pass
         
-        # 🔥 Pull multiple stats at once (Season, Last 7 Days, Last 15 Games, and Monthly History)
-        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'last15Games', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
-        
         season_hr, last_7_hr, last_15_hr, monthly_hr = 0, 0, 0, {}
+        
+        # 🔥 Pull safe, known stats first
+        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
         
         if 'hitting' in stats:
             if 'season' in stats['hitting'] and stats['hitting']['season'].splits:
                 season_hr = stats['hitting']['season'].splits[0].stat.home_runs
             if 'last7Days' in stats['hitting'] and stats['hitting']['last7Days'].splits:
                 last_7_hr = stats['hitting']['last7Days'].splits[0].stat.home_runs
-            if 'last15Games' in stats['hitting'] and stats['hitting']['last15Games'].splits:
-                last_15_hr = stats['hitting']['last15Games'].splits[0].stat.home_runs
             if 'byMonth' in stats['hitting'] and stats['hitting']['byMonth'].splits:
                 for split in stats['hitting']['byMonth'].splits:
                     month_val = getattr(split, 'month', None)
                     if month_val:
                         monthly_hr[month_val] = split.stat.home_runs
+                        
+        # 🛡️ Safely attempt to fetch "last15Days" or "last15Games" in isolation
+        try:
+            # Try last15Days first
+            stats_15 = mlb.get_player_stats(player_id, stats=['last15Days'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in stats_15 and 'last15Days' in stats_15['hitting'] and stats_15['hitting']['last15Days'].splits:
+                last_15_hr = stats_15['hitting']['last15Days'].splits[0].stat.home_runs
+        except Exception:
+            try:
+                # If the API wrapper rejects Days, fall back to Games
+                stats_15 = mlb.get_player_stats(player_id, stats=['last15Games'], groups=['hitting'], season=year, gameType=game_type)
+                if 'hitting' in stats_15 and 'last15Games' in stats_15['hitting'] and stats_15['hitting']['last15Games'].splits:
+                    last_15_hr = stats_15['hitting']['last15Games'].splits[0].stat.home_runs
+            except Exception:
+                pass # If the API completely rejects both, it safely remains 0 without breaking the app
                         
         return season_hr, headshot_url, last_7_hr, last_15_hr, status, monthly_hr
     except Exception as e:

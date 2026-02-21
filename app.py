@@ -216,11 +216,25 @@ with tab2:
         m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0, key="home_team_select")
         
         if m1 and m2:
-            df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
-            df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+            # .copy() prevents warnings when we add our temporary match key
+            df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].copy()
+            df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].copy()
             
-            matchup_df = pd.merge(df1, df2, on='Position', how='outer')
+            # FIX: Create a unique match key for duplicate positions (like multiple "OF"s)
+            df1['match_key'] = df1.groupby('Position').cumcount()
+            df2['match_key'] = df2.groupby('Position').cumcount()
             
+            # Rename the columns for the UI
+            df1 = df1.rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
+            df2 = df2.rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+            
+            # Merge on BOTH Position and the unique match key to prevent duplicates
+            matchup_df = pd.merge(df1, df2, on=['Position', 'match_key'], how='outer')
+            
+            # Drop the invisible match key so it doesn't show up in the final table
+            matchup_df = matchup_df.drop(columns=['match_key'])
+            
+            # Fill blanks for uneven rosters
             matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
             matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
             matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')

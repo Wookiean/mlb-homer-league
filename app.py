@@ -77,38 +77,40 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
         
         season_hr, last_7_hr, last_15_hr, monthly_hr = 0, 0, 0, {}
         
-        # 🔥 Pull safe, known stats first
-        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
-        
-        if 'hitting' in stats:
-            if 'season' in stats['hitting'] and stats['hitting']['season'].splits:
-                season_hr = stats['hitting']['season'].splits[0].stat.home_runs
-            if 'last7Days' in stats['hitting'] and stats['hitting']['last7Days'].splits:
-                last_7_hr = stats['hitting']['last7Days'].splits[0].stat.home_runs
-            if 'byMonth' in stats['hitting'] and stats['hitting']['byMonth'].splits:
-                for split in stats['hitting']['byMonth'].splits:
+        # 🛡️ 1. Fetch Season HRs safely
+        try:
+            s_stats = mlb.get_player_stats(player_id, stats=['season'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in s_stats and 'season' in s_stats['hitting'] and s_stats['hitting']['season'].splits:
+                season_hr = s_stats['hitting']['season'].splits[0].stat.home_runs
+        except Exception: pass
+
+        # 🛡️ 2. Fetch Last 7 Days safely
+        try:
+            s7_stats = mlb.get_player_stats(player_id, stats=['last7Days'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in s7_stats and 'last7Days' in s7_stats['hitting'] and s7_stats['hitting']['last7Days'].splits:
+                last_7_hr = s7_stats['hitting']['last7Days'].splits[0].stat.home_runs
+        except Exception: pass
+
+        # 🛡️ 3. Fetch Last 15 Games safely
+        try:
+            s15_stats = mlb.get_player_stats(player_id, stats=['last15Games'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in s15_stats and 'last15Games' in s15_stats['hitting'] and s15_stats['hitting']['last15Games'].splits:
+                last_15_hr = s15_stats['hitting']['last15Games'].splits[0].stat.home_runs
+        except Exception: pass
+
+        # 🛡️ 4. Fetch Monthly stats safely
+        try:
+            m_stats = mlb.get_player_stats(player_id, stats=['byMonth'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in m_stats and 'byMonth' in m_stats['hitting'] and m_stats['hitting']['byMonth'].splits:
+                for split in m_stats['hitting']['byMonth'].splits:
                     month_val = getattr(split, 'month', None)
                     if month_val:
                         monthly_hr[month_val] = split.stat.home_runs
-                        
-        # 🛡️ Safely attempt to fetch "last15Days" or "last15Games" in isolation
-        try:
-            # Try last15Days first
-            stats_15 = mlb.get_player_stats(player_id, stats=['last15Days'], groups=['hitting'], season=year, gameType=game_type)
-            if 'hitting' in stats_15 and 'last15Days' in stats_15['hitting'] and stats_15['hitting']['last15Days'].splits:
-                last_15_hr = stats_15['hitting']['last15Days'].splits[0].stat.home_runs
-        except Exception:
-            try:
-                # If the API wrapper rejects Days, fall back to Games
-                stats_15 = mlb.get_player_stats(player_id, stats=['last15Games'], groups=['hitting'], season=year, gameType=game_type)
-                if 'hitting' in stats_15 and 'last15Games' in stats_15['hitting'] and stats_15['hitting']['last15Games'].splits:
-                    last_15_hr = stats_15['hitting']['last15Games'].splits[0].stat.home_runs
-            except Exception:
-                pass # If the API completely rejects both, it safely remains 0 without breaking the app
+        except Exception: pass
                         
         return season_hr, headshot_url, last_7_hr, last_15_hr, status, monthly_hr
     except Exception as e:
-        st.error(f"API Error for {search_name}: {e}")
+        print(f"API Error for {search_name}: {e}")
         return 0, None, 0, 0, "Unknown", {}
 
 @st.cache_data(ttl=3600)

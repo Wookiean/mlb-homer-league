@@ -11,69 +11,31 @@ def apply_baseball_theme():
     st.markdown("""
     <style>
     /* Main background: Road Uniform Gray */
-    .stApp {
-        background-color: #D3D5D7;
-    }
-    
+    .stApp {background-color: #D3D5D7;}
     /* Sidebar: Classic Scoreboard Green */
-    [data-testid="stSidebar"] {
-        background-color: #113C2B;
-    }
-    [data-testid="stSidebar"] * {
-        color: #F4F4F0 !important;
-    }
-
+    [data-testid="stSidebar"] {background-color: #113C2B;}
+    [data-testid="stSidebar"] * {color: #F4F4F0 !important;}
     /* Titles & Headers: Baseball Stitch Red */
     h1, h2, h3 {
-        color: #C8102E !important;
-        font-family: 'Trebuchet MS', Helvetica, sans-serif;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 1px;
+        color: #C8102E !important; font-family: 'Trebuchet MS', Helvetica, sans-serif;
+        font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
     }
-
     /* Scoreboard styling for Head-to-Head Metrics */
     [data-testid="stMetricValue"] {
-        color: #FDB827 !important; /* Jumbotron Yellow */
-        background-color: #111111;
-        padding: 10px 20px;
-        border-radius: 5px;
-        border: 4px solid #333333;
-        font-family: 'Courier New', Courier, monospace;
-        font-weight: bold;
-        text-align: center;
-        display: inline-block;
+        color: #FDB827 !important; background-color: #111111;
+        padding: 10px 20px; border-radius: 5px; border: 4px solid #333333;
+        font-family: 'Courier New', Courier, monospace; font-weight: bold;
+        text-align: center; display: inline-block;
     }
-    [data-testid="stMetricLabel"] {
-        font-weight: bold;
-        font-size: 18px;
-        color: #113C2B;
-    }
-
+    [data-testid="stMetricLabel"] {font-weight: bold; font-size: 18px; color: #113C2B;}
     /* Style the Tabs like Ash Wood Bats */
     .stTabs [data-baseweb="tab-list"] {
-        background-color: #E2D1B3; 
-        border-radius: 8px;
-        padding: 5px;
-        border: 2px solid #C4A47C;
+        background-color: #E2D1B3; border-radius: 8px; padding: 5px; border: 2px solid #C4A47C;
     }
-    .stTabs [data-baseweb="tab"] {
-        color: #113C2B;
-        font-weight: bold;
-        font-size: 16px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #C8102E !important;
-        color: #FFFFFF !important;
-        border-radius: 5px;
-    }
-    
+    .stTabs [data-baseweb="tab"] {color: #113C2B; font-weight: bold; font-size: 16px;}
+    .stTabs [aria-selected="true"] {background-color: #C8102E !important; color: #FFFFFF !important; border-radius: 5px;}
     /* Dataframe borders */
-    [data-testid="stDataFrame"] {
-        border: 2px solid #113C2B;
-        border-radius: 5px;
-        box-shadow: 3px 3px 8px rgba(0,0,0,0.1);
-    }
+    [data-testid="stDataFrame"] {border: 2px solid #113C2B; border-radius: 5px; box-shadow: 3px 3px 8px rgba(0,0,0,0.1);}
     </style>
     """, unsafe_allow_html=True)
 
@@ -81,83 +43,80 @@ apply_baseball_theme()
 
 # --- 2. API SETUP & SPREADSHEET CONFIG ---
 mlb = mlbstatsapi.Mlb()
-
 SHEET_ID = "1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs"
 GID = "317249395"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
-
 is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
-
-# This dictionary translates plain spreadsheet names to exact MLB API names
 API_NAME_MAP = {
-    "Jr. Caminero": "Junior Caminero",
-    "Jose Ramirez": "José Ramírez",
-    "Eugenio Suarez": "Eugenio Suárez",
-    "Vladimir Guerrero": "Vladimir Guerrero Jr.",
-    "Jazz Chisholm": "Jazz Chisholm Jr.",
-    "Ronald Acuna Jr.": "Ronald Acuña Jr.",
-    "Lourdes Gurriel": "Lourdes Gurriel Jr.",
-    "Teoscar Hernandez": "Teoscar Hernández",
-    "Luis Robert": "Luis Robert Jr."
+    "Jr. Caminero": "Junior Caminero", "Jose Ramirez": "José Ramírez", "Eugenio Suarez": "Eugenio Suárez",
+    "Vladimir Guerrero": "Vladimir Guerrero Jr.", "Jazz Chisholm": "Jazz Chisholm Jr.", 
+    "Ronald Acuna Jr.": "Ronald Acuña Jr.", "Lourdes Gurriel": "Lourdes Gurriel Jr.", 
+    "Teoscar Hernandez": "Teoscar Hernández", "Luis Robert": "Luis Robert Jr."
 }
 
 @st.cache_data(ttl=3600)
 def fetch_player_data(player_name, year=2026, game_type="R"):
-    # Intercept the name and translate it if it is in our map
     search_name = API_NAME_MAP.get(player_name, player_name)
-    
     try:
         players = mlb.get_people_id(search_name)
-        if not players: 
-            print(f"Still can't find: {search_name}")
-            return 0, None
+        if not players: return 0, None, 0, "Active", {}
         
         player_id = players[0]
         headshot_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{player_id}.jpg"
         
-        stats = mlb.get_player_stats(player_id, stats=['season'], groups=['hitting'], season=year, gameType=game_type)
-        if 'hitting' in stats and 'season' in stats['hitting']:
-            return stats['hitting']['season'].splits[0].stat.home_runs, headshot_url
-        return 0, headshot_url
+        # 🚑 Fetch injury status
+        status = "Active"
+        try:
+            person = mlb.get_person(player_id)
+            if hasattr(person, 'status') and hasattr(person.status, 'description'):
+                status = person.status.description
+        except Exception:
+            pass
+        
+        # 🔥 Pull multiple stats at once (Season, Last 7 Days, and Monthly History)
+        stats = mlb.get_player_stats(player_id, stats=['season', 'last7Days', 'byMonth'], groups=['hitting'], season=year, gameType=game_type)
+        
+        season_hr, last_7_hr, monthly_hr = 0, 0, {}
+        
+        if 'hitting' in stats:
+            if 'season' in stats['hitting'] and stats['hitting']['season'].splits:
+                season_hr = stats['hitting']['season'].splits[0].stat.home_runs
+            if 'last7Days' in stats['hitting'] and stats['hitting']['last7Days'].splits:
+                last_7_hr = stats['hitting']['last7Days'].splits[0].stat.home_runs
+            if 'byMonth' in stats['hitting'] and stats['hitting']['byMonth'].splits:
+                for split in stats['hitting']['byMonth'].splits:
+                    month_val = getattr(split, 'month', None)
+                    if month_val:
+                        monthly_hr[month_val] = split.stat.home_runs
+                        
+        return season_hr, headshot_url, last_7_hr, status, monthly_hr
     except Exception as e:
         print(f"API Error for {search_name}: {e}")
-        return 0, None
+        return 0, None, 0, "Unknown", {}
 
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
-        # FIX: The MLB API leaders endpoint requires 'gameTypes' (plural) 
         leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameTypes=game_type, limit=10, position=pos_code)
         if leaders and hasattr(leaders[0], 'statleaders'):
-            data = []
-            for l in leaders[0].statleaders:
-                pid = l.person.id
-                h_url = f"https://securea.mlb.com/mlb/images/players/head_shot/{pid}.jpg"
-                data.append({"Photo": h_url, "Player": l.person.fullname, "Team": l.team.name, "HR": l.value})
+            data = [{"Photo": f"https://securea.mlb.com/mlb/images/players/head_shot/{l.person.id}.jpg", 
+                     "Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
             return pd.DataFrame(data)
         return pd.DataFrame()
-    except Exception as e:
-        print(f"Leaders API Error: {e}")
-        return pd.DataFrame()
+    except Exception: return pd.DataFrame()
 
 @st.cache_data(ttl=300)
 def load_draft_data():
-    try:
-        df = pd.read_csv(CSV_URL)
-        return df.dropna(subset=['Manager', 'Player'])
-    except Exception as e:
-        st.error(f"Failed to load spreadsheet. Error: {e}")
-        st.stop()
+    try: return pd.read_csv(CSV_URL).dropna(subset=['Manager', 'Player'])
+    except Exception as e: st.stop()
 
 # --- 4. MAIN APP UI ---
 st.title("⚾ 2026 Home Run League War Room")
 
-# Sidebar Controls
 st.sidebar.header("⚙️ League Settings")
 season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
-
 api_year = 2026
 api_game_type = "S" if season_mode == "Spring Training" else "R"
 
@@ -166,150 +125,105 @@ if st.sidebar.button("🔄 Force Refresh All Data"):
     st.cache_data.clear()
     st.rerun()
 
-# Load Data
 roster_df = load_draft_data()
 managers = roster_df['Manager'].unique().tolist()
-
 all_team_data = {}
-with st.spinner("Crunching live MLB stats & generating headshots..."):
+
+with st.spinner("Crunching live MLB stats, injury reports, & hot streaks..."):
     for m in managers:
         team_df = roster_df[roster_df['Manager'] == m].copy()
-        # Fetch data tuple (HR, URL) and split into two columns
+        # Unpack the 5 pieces of data
         stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, api_year, api_game_type))
         team_df['HR'] = stats_data.apply(lambda x: x[0])
         team_df['Photo'] = stats_data.apply(lambda x: x[1])
+        team_df['Last 7 Days'] = stats_data.apply(lambda x: x[2])
+        team_df['Status'] = stats_data.apply(lambda x: x[3])
+        team_df['Monthly Data'] = stats_data.apply(lambda x: x[4])
+        
+        # Apply the IL Ambulance emoji
+        def format_name(row):
+            if "IL" in str(row['Status']) or "Injured" in str(row['Status']): return f"🚑 {row['Player']}"
+            return row['Player']
+        team_df['Display Name'] = team_df.apply(format_name, axis=1)
         all_team_data[m] = team_df
 
 # --- 5. TABS ---
-tab1, tab2, tab3, tab4 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders", "⏪ 2025 Rewind"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders", "⏪ 2025 Rewind", "📈 Pennant Race"])
 
 with tab1:
-    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum()} for m in managers]
+    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
-    
     st.subheader(f"Current {season_mode} Standings")
     st.dataframe(standings_df, use_container_width=True)
 
     st.divider()
     st.subheader("📋 Full Roster Breakdown")
-    
     cols = st.columns(len(managers))
     for i, m in enumerate(managers):
         with cols[i]:
             st.markdown(f"### {m}'s Team")
-            display_df = all_team_data[m][['Photo', 'Position', 'Player', 'MLB Team', 'HR']].sort_values(by="HR", ascending=False)
-            st.dataframe(
-                display_df, 
-                hide_index=True, 
-                use_container_width=True,
-                column_config={"Photo": st.column_config.ImageColumn("Photo")}
-            )
+            display_df = all_team_data[m][['Photo', 'Position', 'Display Name', 'MLB Team', 'HR', 'Last 7 Days']].sort_values(by="HR", ascending=False)
+            st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
 
 with tab2:
-    # Wrap the analyzer in a fragment so it runs independently from the rest of the app
     @st.fragment
     def render_matchup_analyzer():
         st.subheader("Matchup Analyzer")
         col1, col2 = st.columns(2)
-        # Added unique keys to the selectboxes to keep them stable
         m1 = col1.selectbox("Select Away Team", managers, index=0, key="away_team_select")
         m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0, key="home_team_select")
         
-        # FIX: Check if the user selected the same team twice!
-        if m1 == m2:
-            st.warning(f"⚠️ You selected {m1} for both teams! Please choose a different opponent to view the matchup.")
+        if m1 == m2: st.warning(f"⚠️ You selected {m1} for both teams!")
         elif m1 and m2:
-            # .copy() prevents warnings when we add our temporary match key
-            df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].copy()
-            df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].copy()
-            
-            # Create a unique match key for duplicate positions (like multiple "OF"s)
+            df1 = all_team_data[m1][['Position', 'Photo', 'Display Name', 'HR']].copy()
+            df2 = all_team_data[m2][['Position', 'Photo', 'Display Name', 'HR']].copy()
             df1['match_key'] = df1.groupby('Position').cumcount()
             df2['match_key'] = df2.groupby('Position').cumcount()
             
-            # Rename the columns for the UI
-            df1 = df1.rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
-            df2 = df2.rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+            df1 = df1.rename(columns={'Photo': f'{m1} Photo', 'Display Name': f'{m1} Player', 'HR': f'{m1} HR'})
+            df2 = df2.rename(columns={'Photo': f'{m2} Photo', 'Display Name': f'{m2} Player', 'HR': f'{m2} HR'})
             
-            # Merge on BOTH Position and the unique match key to prevent duplicates
-            matchup_df = pd.merge(df1, df2, on=['Position', 'match_key'], how='outer')
-            
-            # Drop the invisible match key so it doesn't show up in the final table
-            matchup_df = matchup_df.drop(columns=['match_key'])
-            
-            # Fill blanks for uneven rosters
+            matchup_df = pd.merge(df1, df2, on=['Position', 'match_key'], how='outer').drop(columns=['match_key'])
             matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
             matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
             matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
             matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
             
             st.markdown("<br>", unsafe_allow_html=True)
-            score1 = all_team_data[m1]['HR'].sum()
-            score2 = all_team_data[m2]['HR'].sum()
-            
             sc1, sc2, sc3 = st.columns([1, 2, 1])
-            with sc2:
-                 st.metric(label=f"{m1} vs {m2}", value=f"{score1} - {score2}")
+            with sc2: st.metric(label=f"{m1} vs {m2}", value=f"{all_team_data[m1]['HR'].sum()} - {all_team_data[m2]['HR'].sum()}")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.dataframe(
-                matchup_df, 
-                hide_index=True, 
-                use_container_width=True,
-                column_config={
-                    f"{m1} Photo": st.column_config.ImageColumn(""),
-                    f"{m2} Photo": st.column_config.ImageColumn("")
-                }
-            )
-            
-    # Call the fragment to display it inside the tab
+            st.dataframe(matchup_df, hide_index=True, use_container_width=True, 
+                         column_config={f"{m1} Photo": st.column_config.ImageColumn(""), f"{m2} Photo": st.column_config.ImageColumn("")})
     render_matchup_analyzer()
 
 with tab3:
-    # Wrap the leaders board in a fragment so changing the dropdown doesn't reload the whole app
     @st.fragment
     def render_mlb_leaders():
         st.subheader("Top 10 Leaders by Position")
         pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
-        
-        # Added a unique key to the selectbox for stability
         selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x], key="leader_pos_select")
-        
         leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
-        if not leaders_df.empty:
-            st.dataframe(
-                leaders_df, 
-                hide_index=True, 
-                use_container_width=True,
-                column_config={"Photo": st.column_config.ImageColumn("Photo")}
-            )
-        else:
-            st.warning("No data available for this position yet.")
-            
-    # Call the fragment to display it inside the tab
+        if not leaders_df.empty: st.dataframe(leaders_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+        else: st.warning("No data available for this position yet.")
     render_mlb_leaders()
 
 with tab4:
     st.subheader("⏪ The 2025 Alternate Universe")
-    st.info("How would your current 2026 roster have performed last year? Click below to run the simulation based on official 2025 MLB Regular Season totals.")
-    
     if st.button("Simulate 2025 Season"):
         with st.spinner("Traveling back in time to fetch 2025 stats..."):
             retro_team_data = {}
             for m in managers:
                 team_df = roster_df[roster_df['Manager'] == m].copy()
-                
-                # Fetch data tuple (HR, URL) and split into two columns
                 stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
                 team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
                 team_df['Photo'] = stats_data.apply(lambda x: x[1])
                 retro_team_data[m] = team_df
             
             retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
-            retro_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
-            
             st.markdown("### 🏆 2025 Simulated Standings")
-            st.dataframe(retro_df, use_container_width=True)
+            st.dataframe(pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True), use_container_width=True)
             
             st.divider()
             st.markdown("### 📋 2025 Player Contributions")
@@ -318,11 +232,32 @@ with tab4:
                 with cols[i]:
                     st.markdown(f"### {m}'s Team")
                     display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
-                    st.dataframe(
-                        display_df, 
-                        hide_index=True, 
-                        use_container_width=True,
-                        column_config={"Photo": st.column_config.ImageColumn("Photo")}
-                    )
+                    st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+
+with tab5:
+    st.subheader("📈 Monthly Home Run Pennant Race")
+    st.info("Tracking total home runs hit by each manager's roster month-by-month.")
+    
+    chart_data = {}
+    has_monthly_data = False
+    
+    for m in managers:
+        manager_monthly = {}
+        for monthly_dict in all_team_data[m]['Monthly Data']:
+            for month, hrs in monthly_dict.items():
+                manager_monthly[month] = manager_monthly.get(month, 0) + hrs
+                has_monthly_data = True
+        chart_data[m] = manager_monthly
+        
+    df_chart = pd.DataFrame(chart_data)
+    
+    if has_monthly_data and not df_chart.empty:
+        df_chart = df_chart.sort_index()
+        month_names = {3: "March", 4: "April", 5: "May", 6: "June", 7: "July", 8: "August", 9: "September", 10: "October"}
+        try: df_chart.index = df_chart.index.map(lambda x: month_names.get(int(x), f"Month {x}"))
+        except: pass 
+        st.line_chart(df_chart)
+    else:
+        st.warning("Not enough monthly data to build the pennant race chart yet. Check back when the season gets going!")
 
 st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")

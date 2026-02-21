@@ -215,12 +215,15 @@ with tab2:
         m1 = col1.selectbox("Select Away Team", managers, index=0, key="away_team_select")
         m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0, key="home_team_select")
         
-        if m1 and m2:
+        # FIX: Check if the user selected the same team twice!
+        if m1 == m2:
+            st.warning(f"⚠️ You selected {m1} for both teams! Please choose a different opponent to view the matchup.")
+        elif m1 and m2:
             # .copy() prevents warnings when we add our temporary match key
             df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].copy()
             df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].copy()
             
-            # FIX: Create a unique match key for duplicate positions (like multiple "OF"s)
+            # Create a unique match key for duplicate positions (like multiple "OF"s)
             df1['match_key'] = df1.groupby('Position').cumcount()
             df2['match_key'] = df2.groupby('Position').cumcount()
             

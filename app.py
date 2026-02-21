@@ -266,20 +266,28 @@ with tab2:
     render_matchup_analyzer()
 
 with tab3:
-    st.subheader("Top 10 Leaders by Position")
-    pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
-    selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
-    
-    leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
-    if not leaders_df.empty:
-        st.dataframe(
-            leaders_df, 
-            hide_index=True, 
-            use_container_width=True,
-            column_config={"Photo": st.column_config.ImageColumn("Photo")}
-        )
-    else:
-        st.warning("No data available for this position yet.")
+    # Wrap the leaders board in a fragment so changing the dropdown doesn't reload the whole app
+    @st.fragment
+    def render_mlb_leaders():
+        st.subheader("Top 10 Leaders by Position")
+        pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
+        
+        # Added a unique key to the selectbox for stability
+        selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x], key="leader_pos_select")
+        
+        leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
+        if not leaders_df.empty:
+            st.dataframe(
+                leaders_df, 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+            )
+        else:
+            st.warning("No data available for this position yet.")
+            
+    # Call the fragment to display it inside the tab
+    render_mlb_leaders()
 
 with tab4:
     st.subheader("⏪ The 2025 Alternate Universe")

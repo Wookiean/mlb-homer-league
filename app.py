@@ -206,42 +206,47 @@ with tab1:
             )
 
 with tab2:
-    st.subheader("Matchup Analyzer")
-    col1, col2 = st.columns(2)
-    m1 = col1.selectbox("Select Away Team", managers, index=0)
-    m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0)
-    
-    if m1 and m2:
-        df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
-        df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+    # Wrap the analyzer in a fragment so it runs independently from the rest of the app
+    @st.fragment
+    def render_matchup_analyzer():
+        st.subheader("Matchup Analyzer")
+        col1, col2 = st.columns(2)
+        # Added unique keys to the selectboxes to keep them stable
+        m1 = col1.selectbox("Select Away Team", managers, index=0, key="away_team_select")
+        m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0, key="home_team_select")
         
-        # Merge the teams, but do NOT fillna yet
-        matchup_df = pd.merge(df1, df2, on='Position', how='outer')
-        
-        # FIX: Only fill dashes for the text columns. Leave missing photos alone so Streamlit doesn't crash!
-        matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
-        matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
-        matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
-        matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        score1 = all_team_data[m1]['HR'].sum()
-        score2 = all_team_data[m2]['HR'].sum()
-        
-        sc1, sc2, sc3 = st.columns([1, 2, 1])
-        with sc2:
-             st.metric(label=f"{m1} vs {m2}", value=f"{score1} - {score2}")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(
-            matchup_df, 
-            hide_index=True, 
-            use_container_width=True,
-            column_config={
-                f"{m1} Photo": st.column_config.ImageColumn(""),
-                f"{m2} Photo": st.column_config.ImageColumn("")
-            }
-        )
+        if m1 and m2:
+            df1 = all_team_data[m1][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m1} Photo', 'Player': f'{m1} Player', 'HR': f'{m1} HR'})
+            df2 = all_team_data[m2][['Position', 'Photo', 'Player', 'HR']].rename(columns={'Photo': f'{m2} Photo', 'Player': f'{m2} Player', 'HR': f'{m2} HR'})
+            
+            matchup_df = pd.merge(df1, df2, on='Position', how='outer')
+            
+            matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
+            matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
+            matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
+            matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            score1 = all_team_data[m1]['HR'].sum()
+            score2 = all_team_data[m2]['HR'].sum()
+            
+            sc1, sc2, sc3 = st.columns([1, 2, 1])
+            with sc2:
+                 st.metric(label=f"{m1} vs {m2}", value=f"{score1} - {score2}")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.dataframe(
+                matchup_df, 
+                hide_index=True, 
+                use_container_width=True,
+                column_config={
+                    f"{m1} Photo": st.column_config.ImageColumn(""),
+                    f"{m2} Photo": st.column_config.ImageColumn("")
+                }
+            )
+            
+    # Call the fragment to display it inside the tab
+    render_matchup_analyzer()
 
 with tab3:
     st.subheader("Top 10 Leaders by Position")

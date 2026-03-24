@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 import mlbstatsapi
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # --- 1. PAGE SETUP & CONFIG ---
 st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="⚾")
+
+# 🔄 Start the Auto-Refresher (Runs every 5 minutes / 300,000 milliseconds)
+st_autorefresh(interval=300000, limit=None, key="war_room_refresh")
 
 # --- BASEBALL THEME CSS ---
 def apply_baseball_theme():
@@ -46,7 +50,6 @@ mlb = mlbstatsapi.Mlb()
 SHEET_ID = "1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs"
 GID = "317249395"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
-is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
 API_NAME_MAP = {
@@ -133,7 +136,8 @@ def load_draft_data():
 st.title("⚾ 2026 Home Run League War Room")
 
 st.sidebar.header("⚙️ League Settings")
-season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
+# FIX: Hardcoded Regular Season to index=1 so it defaults to Opening Day!
+season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1)
 api_year = 2026
 api_game_type = "S" if season_mode == "Spring Training" else "R"
 
@@ -172,7 +176,7 @@ with tab1:
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
     
-    # FIX: Make the leaderboard index start at 1 instead of 0
+    # Make the leaderboard index start at 1 instead of 0
     standings_df.index += 1
     
     st.subheader(f"Current {season_mode} Standings")
@@ -267,7 +271,7 @@ with tab4:
                 retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
                 retro_standings_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
                 
-                # FIX: Make the leaderboard index start at 1 instead of 0
+                # Make the leaderboard index start at 1 instead of 0
                 retro_standings_df.index += 1
                 
                 st.markdown("### 🏆 2025 Simulated Standings")

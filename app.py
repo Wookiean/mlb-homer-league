@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 import mlbstatsapi
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # --- 1. PAGE SETUP & CONFIG ---
 st.set_page_config(page_title="2026 Home Run League", layout="wide", page_icon="⚾")
+
+# 🔄 Start the Auto-Refresher (Runs every 5 minutes / 300,000 milliseconds)
+st_autorefresh(interval=300000, limit=None, key="war_room_refresh")
 
 # --- BASEBALL THEME CSS ---
 def apply_baseball_theme():
@@ -46,7 +50,6 @@ mlb = mlbstatsapi.Mlb()
 SHEET_ID = "1Z6QaPLRVIU8kY9Fl4TGksk5uGM4ZzHVr5ebRifkoqKs"
 GID = "317249395"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
-is_regular_season = datetime.now() >= datetime(2026, 3, 25)
 
 # --- 3. HELPER FUNCTIONS ---
 API_NAME_MAP = {
@@ -133,7 +136,8 @@ def load_draft_data():
 st.title("⚾ 2026 Home Run League War Room")
 
 st.sidebar.header("⚙️ League Settings")
-season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1 if is_regular_season else 0)
+# FIX: Hardcoded Regular Season to index=1 so it defaults to Opening Day!
+season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1)
 api_year = 2026
 api_game_type = "S" if season_mode == "Spring Training" else "R"
 
@@ -172,7 +176,7 @@ with tab1:
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
     
-    # FIX: Start the index at 1
+    # Make the leaderboard index start at 1 instead of 0
     standings_df.index += 1
     
     st.subheader(f"Current {season_mode} Standings")
@@ -180,38 +184,140 @@ with tab1:
 
     st.divider()
     st.subheader("📋 Full Roster Breakdown")
-    cols = st.columns(len(managers))
+    
+    manager_tabs = st.tabs([f"🧢 {m}'s Team" for m in managers])
+    
     for i, m in enumerate(managers):
-        with cols[i]:
-            st.markdown(f"### {m}'s Team")
+        with manager_tabs[i]:
             display_df = all_team_data[m][['Photo', 'Position', 'Display Name', 'MLB Team', 'HR', 'Last 7 Days', 'Last 15 Games']].sort_values(by="HR", ascending=False)
-            st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
+            st.dataframe(
+                display_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+            )
 
 with tab2:
-    st.subheader("Matchup Analyzer")
-    col1, col2 = st.columns(2)
-    m1 = col1.selectbox("Select Away Team", managers, index=0)
-    m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0)
+    @st.fragment
+    def render_matchup_analyzer():
+        st.subheader("Matchup Analyzer")
+        col1, col2 = st.columns(2)
+        m1 = col1.selectbox("Select Away Team", managers, index=0, key="away_team_select")
+        m2 = col2.selectbox("Select Home Team", managers, index=1 if len(managers) > 1 else 0, key="home_team_select")
+        
+        if m1 == m2: st.warning(f"⚠️ You selected {m1} for both teams!")
+        elif m1 and m2:
+            df1 = all_team_data[m1][['Position', 'Photo', 'Display Name', 'HR']].copy()
+            df2 = all_team_data[m2][['Position', 'Photo', 'Display Name', 'HR']].copy()
+            df1['match_key'] = df1.groupby('Position').cumcount()
+            df2['match_key'] = df2.groupby('Position').cumcount()
+            
+            df1 = df1.rename(columns={'Photo': f'{m1} Photo', 'Display Name': f'{m1} Player', 'HR': f'{m1} HR'})
+            df2 = df2.rename(columns={'Photo': f'{m2} Photo', 'Display Name': f'{m2} Player', 'HR': f'{m2} HR'})
+            
+            matchup_df = pd.merge(df1, df2, on=['Position', 'match_key'], how='outer').drop(columns=['match_key'])
+            matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
+            matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
+            matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
+            matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            sc1, sc2, sc3 = st.columns([1, 2, 1])
+            with sc2: st.metric(label=f"{m1} vs {m2}", value=f"{all_team_data[m1]['HR'].sum()} - {all_team_data[m2]['HR'].sum()}")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.dataframe(
+                matchup_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                column_config={
+                    f"{m1} Photo": st.column_config.ImageColumn(""), 
+                    f"{m2} Photo": st.column_config.ImageColumn("")
+                }
+            )
+    render_matchup_analyzer()
+
+with tab3:
+    @st.fragment
+    def render_mlb_leaders():
+        st.subheader("Top 10 Leaders by Position")
+        pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
+        selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x], key="leader_pos_select")
+        leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
+        if not leaders_df.empty: 
+            st.dataframe(
+                leaders_df, 
+                hide_index=True, 
+                use_container_width=True, 
+                column_config={"Photo": st.column_config.ImageColumn("Photo")}
+            )
+        else: st.warning("No data available for this position yet.")
+    render_mlb_leaders()
+
+with tab4:
+    @st.fragment
+    def render_2025_rewind():
+        st.subheader("⏪ The 2025 Alternate Universe")
+        if st.button("Simulate 2025 Season"):
+            with st.spinner("Traveling back in time to fetch 2025 stats..."):
+                retro_team_data = {}
+                for m in managers:
+                    team_df = roster_df[roster_df['Manager'] == m].copy()
+                    stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
+                    team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
+                    team_df['Photo'] = stats_data.apply(lambda x: x[1])
+                    retro_team_data[m] = team_df
+                
+                retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
+                retro_standings_df = pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True)
+                
+                # Make the leaderboard index start at 1 instead of 0
+                retro_standings_df.index += 1
+                
+                st.markdown("### 🏆 2025 Simulated Standings")
+                st.dataframe(retro_standings_df, use_container_width=True)
+                
+                st.divider()
+                st.markdown("### 📋 2025 Player Contributions")
+                cols = st.columns(len(managers))
+                for i, m in enumerate(managers):
+                    with cols[i]:
+                        st.markdown(f"### {m}'s Team")
+                        display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
+                        st.dataframe(
+                            display_df, 
+                            hide_index=True, 
+                            use_container_width=True, 
+                            column_config={"Photo": st.column_config.ImageColumn("Photo")}
+                        )
+
+    # Call the fragment function
+    render_2025_rewind()
+
+with tab5:
+    st.subheader("📈 Monthly Home Run Pennant Race")
+    st.info("Tracking total home runs hit by each manager's roster month-by-month.")
     
-    if m1 == m2: st.warning(f"⚠️ You selected {m1} for both teams!")
-    elif m1 and m2:
-        df1 = all_team_data[m1][['Position', 'Photo', 'Display Name', 'HR']].copy()
-        df2 = all_team_data[m2][['Position', 'Photo', 'Display Name', 'HR']].copy()
-        df1['match_key'] = df1.groupby('Position').cumcount()
-        df2['match_key'] = df2.groupby('Position').cumcount()
+    chart_data = {}
+    has_monthly_data = False
+    
+    for m in managers:
+        manager_monthly = {}
+        for monthly_dict in all_team_data[m]['Monthly Data']:
+            for month, hrs in monthly_dict.items():
+                manager_monthly[month] = manager_monthly.get(month, 0) + hrs
+                has_monthly_data = True
+        chart_data[m] = manager_monthly
         
-        df1 = df1.rename(columns={'Photo': f'{m1} Photo', 'Display Name': f'{m1} Player', 'HR': f'{m1} HR'})
-        df2 = df2.rename(columns={'Photo': f'{m2} Photo', 'Display Name': f'{m2} Player', 'HR': f'{m2} HR'})
-        
-        matchup_df = pd.merge(df1, df2, on=['Position', 'match_key'], how='outer').drop(columns=['match_key'])
-        matchup_df[f'{m1} Player'] = matchup_df[f'{m1} Player'].fillna('---')
-        matchup_df[f'{m2} Player'] = matchup_df[f'{m2} Player'].fillna('---')
-        matchup_df[f'{m1} HR'] = matchup_df[f'{m1} HR'].fillna('-')
-        matchup_df[f'{m2} HR'] = matchup_df[f'{m2} HR'].fillna('-')
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        sc1, sc2, sc3 = st.columns([1, 2, 1])
-        with sc2: st.metric(label=f"{m1} vs {m2}", value=f"{all_team_data[m1]['HR'].sum()} - {all_team_data[m2]['HR'].sum()}")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(matchup_df, hide_index=True, use_container_width=True,
+    df_chart = pd.DataFrame(chart_data)
+    
+    if has_monthly_data and not df_chart.empty:
+        df_chart = df_chart.sort_index()
+        month_names = {3: "March", 4: "April", 5: "May", 6: "June", 7: "July", 8: "August", 9: "September", 10: "October"}
+        try: df_chart.index = df_chart.index.map(lambda x: month_names.get(int(x), f"Month {x}"))
+        except: pass 
+        st.line_chart(df_chart)
+    else:
+        st.warning("Not enough monthly data to build the pennant race chart yet. Check back when the season gets going!")
+
+st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")

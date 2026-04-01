@@ -116,23 +116,14 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
-        # We add playerPool='all' so the API shows everyone who has hit a HR,
-        # even if they haven't played enough games to "qualify" yet.
-        leaders = mlb.get_stats_leaders(
-            leader_categories='homeRuns', 
-            stat_group='hitting', 
-            season=year, 
-            gameTypes=game_type, 
-            limit=10, 
-            position=pos_code,
-            playerPool='all' 
-        )
+        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameTypes=game_type, limit=10, position=pos_code)
         if leaders and hasattr(leaders[0], 'statleaders'):
             data = [{"Photo": f"https://securea.mlb.com/mlb/images/players/head_shot/{l.person.id}.jpg", 
                      "Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
             return pd.DataFrame(data)
         return pd.DataFrame()
     except Exception: return pd.DataFrame()
+
 @st.cache_data(ttl=300)
 def load_draft_data():
     try: return pd.read_csv(CSV_URL).dropna(subset=['Manager', 'Player'])
@@ -180,6 +171,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head",
 with tab1:
     standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
     standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
+    
+    # FIX: Start the index at 1
+    standings_df.index += 1
+    
     st.subheader(f"Current {season_mode} Standings")
     st.dataframe(standings_df, use_container_width=True)
 
@@ -219,66 +214,4 @@ with tab2:
         with sc2: st.metric(label=f"{m1} vs {m2}", value=f"{all_team_data[m1]['HR'].sum()} - {all_team_data[m2]['HR'].sum()}")
         
         st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(matchup_df, hide_index=True, use_container_width=True, 
-                     column_config={f"{m1} Photo": st.column_config.ImageColumn(""), f"{m2} Photo": st.column_config.ImageColumn("")})
-
-with tab3:
-    st.subheader("Top 10 Leaders by Position")
-    pos_map = {"C": "Catcher", "1B": "1st Base", "2B": "2nd Base", "3B": "3rd Base", "SS": "Shortstop", "OF": "Outfield", "DH": "Designated Hitter"}
-    selected_pos = st.selectbox("Select Position:", list(pos_map.keys()), format_func=lambda x: pos_map[x])
-    leaders_df = get_league_leaders(selected_pos, api_year, api_game_type)
-    if not leaders_df.empty: st.dataframe(leaders_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
-    else: st.warning("No data available for this position yet.")
-
-with tab4:
-    st.subheader("⏪ The 2025 Alternate Universe")
-    if st.button("Simulate 2025 Season"):
-        with st.spinner("Traveling back in time to fetch 2025 stats..."):
-            retro_team_data = {}
-            for m in managers:
-                team_df = roster_df[roster_df['Manager'] == m].copy()
-                stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, 2025, "R"))
-                team_df['2025 HR'] = stats_data.apply(lambda x: x[0])
-                team_df['Photo'] = stats_data.apply(lambda x: x[1])
-                retro_team_data[m] = team_df
-            
-            retro_standings = [{"Manager": m, "2025 Total HRs": retro_team_data[m]['2025 HR'].sum()} for m in managers]
-            st.markdown("### 🏆 2025 Simulated Standings")
-            st.dataframe(pd.DataFrame(retro_standings).sort_values(by="2025 Total HRs", ascending=False).reset_index(drop=True), use_container_width=True)
-            
-            st.divider()
-            st.markdown("### 📋 2025 Player Contributions")
-            cols = st.columns(len(managers))
-            for i, m in enumerate(managers):
-                with cols[i]:
-                    st.markdown(f"### {m}'s Team")
-                    display_df = retro_team_data[m][['Photo', 'Position', 'Player', '2025 HR']].sort_values(by="2025 HR", ascending=False)
-                    st.dataframe(display_df, hide_index=True, use_container_width=True, column_config={"Photo": st.column_config.ImageColumn("Photo")})
-
-with tab5:
-    st.subheader("📈 Monthly Home Run Pennant Race")
-    st.info("Tracking total home runs hit by each manager's roster month-by-month.")
-    
-    chart_data = {}
-    has_monthly_data = False
-    
-    for m in managers:
-        manager_monthly = {}
-        for monthly_dict in all_team_data[m]['Monthly Data']:
-            for month, hrs in monthly_dict.items():
-                manager_monthly[month] = manager_monthly.get(month, 0) + hrs
-                has_monthly_data = True
-        chart_data[m] = manager_monthly
-        
-    df_chart = pd.DataFrame(chart_data)
-    
-    if has_monthly_data and not df_chart.empty:
-        df_chart = df_chart.sort_index()
-        month_names = {3: "March", 4: "April", 5: "May", 6: "June", 7: "July", 8: "August", 9: "September", 10: "October"}
-        try: df_chart.index = df_chart.index.map(lambda x: month_names.get(int(x), f"Month {x}"))
-        except: pass 
-        st.line_chart(df_chart)
-    else:
-        st.warning("Not enough monthly data to build the pennant race chart yet. Check back when the season gets going!")
-
-st.caption(f"Stats last synced from MLB API at {datetime.now().strftime('%I:%M:%S %p')}")
+        st.dataframe(matchup_df, hide_index=True, use_container_width=True,

@@ -116,14 +116,23 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
 @st.cache_data(ttl=3600)
 def get_league_leaders(pos_code, year=2026, game_type="R"):
     try:
-        leaders = mlb.get_stats_leaders(leader_categories='homeRuns', stat_group='hitting', season=year, gameTypes=game_type, limit=10, position=pos_code)
+        # We add playerPool='all' so the API shows everyone who has hit a HR,
+        # even if they haven't played enough games to "qualify" yet.
+        leaders = mlb.get_stats_leaders(
+            leader_categories='homeRuns', 
+            stat_group='hitting', 
+            season=year, 
+            gameTypes=game_type, 
+            limit=10, 
+            position=pos_code,
+            playerPool='all' 
+        )
         if leaders and hasattr(leaders[0], 'statleaders'):
             data = [{"Photo": f"https://securea.mlb.com/mlb/images/players/head_shot/{l.person.id}.jpg", 
                      "Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
             return pd.DataFrame(data)
         return pd.DataFrame()
     except Exception: return pd.DataFrame()
-
 @st.cache_data(ttl=300)
 def load_draft_data():
     try: return pd.read_csv(CSV_URL).dropna(subset=['Manager', 'Player'])

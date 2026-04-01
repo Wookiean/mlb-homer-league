@@ -98,4 +98,95 @@ def fetch_player_data(player_name, year=2026, game_type="R"):
         try:
             s15_stats = mlb.get_player_stats(player_id, stats=['last15Games'], groups=['hitting'], season=year, gameType=game_type)
             if 'hitting' in s15_stats and 'last15Games' in s15_stats['hitting'] and s15_stats['hitting']['last15Games'].splits:
-                last_15_hr = s15_stats
+                last_15_hr = s15_stats['hitting']['last15Games'].splits[0].stat.home_runs
+        except Exception: pass
+
+        # 🛡️ 4. Fetch Monthly stats safely
+        try:
+            m_stats = mlb.get_player_stats(player_id, stats=['byMonth'], groups=['hitting'], season=year, gameType=game_type)
+            if 'hitting' in m_stats and 'byMonth' in m_stats['hitting'] and m_stats['hitting']['byMonth'].splits:
+                for split in m_stats['hitting']['byMonth'].splits:
+                    month_val = getattr(split, 'month', None)
+                    if month_val:
+                        monthly_hr[month_val] = split.stat.home_runs
+        except Exception: pass
+                        
+        return season_hr, headshot_url, last_7_hr, last_15_hr, status, monthly_hr
+    except Exception as e:
+        print(f"API Error for {search_name}: {e}")
+        return 0, None, 0, 0, "Unknown", {}
+
+@st.cache_data(ttl=3600)
+def get_league_leaders(pos_code, year=2026, game_type="R"):
+    try:
+        # Added playerPool='all' to bypass early-season qualification thresholds
+        leaders = mlb.get_stats_leaders(
+            leader_categories='homeRuns', 
+            stat_group='hitting', 
+            season=year, 
+            gameTypes=game_type, 
+            limit=10, 
+            position=pos_code,
+            playerPool='all'
+        )
+        if leaders and hasattr(leaders[0], 'statleaders'):
+            data = [{"Photo": f"https://securea.mlb.com/mlb/images/players/head_shot/{l.person.id}.jpg", 
+                     "Player": l.person.fullname, "Team": l.team.name, "HR": l.value} for l in leaders[0].statleaders]
+            return pd.DataFrame(data)
+        return pd.DataFrame()
+    except Exception: return pd.DataFrame()
+
+@st.cache_data(ttl=300)
+def load_draft_data():
+    try: return pd.read_csv(CSV_URL).dropna(subset=['Manager', 'Player'])
+    except Exception as e: st.stop()
+
+# --- 4. MAIN APP UI ---
+st.title("⚾ 2026 Home Run League War Room")
+
+st.sidebar.header("⚙️ League Settings")
+# Hardcoded Regular Season to index=1 so it defaults to the active season
+season_mode = st.sidebar.radio("Season Phase:", ["Spring Training", "Regular Season"], index=1)
+api_year = 2026
+api_game_type = "S" if season_mode == "Spring Training" else "R"
+
+st.sidebar.divider()
+if st.sidebar.button("🔄 Force Refresh All Data"):
+    st.cache_data.clear()
+    st.rerun()
+
+roster_df = load_draft_data()
+managers = roster_df['Manager'].unique().tolist()
+all_team_data = {}
+
+with st.spinner("Crunching live MLB stats, injury reports, & hot streaks..."):
+    for m in managers:
+        team_df = roster_df[roster_df['Manager'] == m].copy()
+        # Unpack the 6 pieces of data
+        stats_data = team_df['Player'].apply(lambda p: fetch_player_data(p, api_year, api_game_type))
+        team_df['HR'] = stats_data.apply(lambda x: x[0])
+        team_df['Photo'] = stats_data.apply(lambda x: x[1])
+        team_df['Last 7 Days'] = stats_data.apply(lambda x: x[2])
+        team_df['Last 15 Games'] = stats_data.apply(lambda x: x[3])
+        team_df['Status'] = stats_data.apply(lambda x: x[4])
+        team_df['Monthly Data'] = stats_data.apply(lambda x: x[5])
+        
+        # Apply the IL Ambulance emoji
+        def format_name(row):
+            if "IL" in str(row['Status']) or "Injured" in str(row['Status']): return f"🚑 {row['Player']}"
+            return row['Player']
+        team_df['Display Name'] = team_df.apply(format_name, axis=1)
+        all_team_data[m] = team_df
+
+# --- 5. TABS ---
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏆 Standings", "⚔️ Head-to-Head", "⚾ MLB Leaders", "⏪ 2025 Rewind", "📈 Pennant Race"])
+
+with tab1:
+    standings_data = [{"Manager": m, "Total HRs": all_team_data[m]['HR'].sum(), "Last 7 Days": all_team_data[m]['Last 7 Days'].sum(), "Last 15 Games": all_team_data[m]['Last 15 Games'].sum()} for m in managers]
+    standings_df = pd.DataFrame(standings_data).sort_values(by="Total HRs", ascending=False).reset_index(drop=True)
+    
+    # Make the leaderboard index start at 1 instead of 0
+    standings_df.index += 1
+    
+    st.subheader(f"Current {season_mode} Standings")
+    st
